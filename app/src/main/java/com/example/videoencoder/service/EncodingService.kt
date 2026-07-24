@@ -135,6 +135,14 @@ class EncodingService : Service() {
                     progressPercent = 100,
                     outputPath = outputPath
                 )
+                try {
+                    android.media.MediaScannerConnection.scanFile(
+                        applicationContext,
+                        arrayOf(outputPath),
+                        arrayOf("video/mp4"),
+                        null
+                    )
+                } catch (_: Exception) {}
                 updateNotification(100, "Encoding Completed Successfully!")
                 stopSelfWithDelay()
             },

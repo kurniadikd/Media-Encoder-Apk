@@ -1,6 +1,7 @@
 package com.example.videoencoder.ui
 
 import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -246,34 +247,60 @@ fun CompressorScreen(
                 historyItems = uiState.encodedHistory,
                 onDelete = { viewModel.deleteHistoryItem(it.path) },
                 onPlay = { item ->
-                    val file = File(item.path)
-                    if (file.exists()) {
-                        val uri = FileProvider.getUriForFile(
-                            context,
-                            "${context.packageName}.fileprovider",
-                            file
-                        )
-                        val intent = Intent(Intent.ACTION_VIEW).apply {
-                            setDataAndType(uri, "video/mp4")
-                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    try {
+                        val file = File(item.path)
+                        if (file.exists()) {
+                            val uri: Uri = try {
+                                FileProvider.getUriForFile(
+                                    context,
+                                    "${context.packageName}.fileprovider",
+                                    file
+                                )
+                            } catch (e: Exception) {
+                                Uri.fromFile(file)
+                            }
+                            val intent = Intent(Intent.ACTION_VIEW).apply {
+                                setDataAndType(uri, "video/*")
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            val chooser = Intent.createChooser(intent, "Putar Video Dengan")
+                            chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            context.startActivity(chooser)
+                        } else {
+                            android.widget.Toast.makeText(context, "File tidak ditemukan: ${item.name}", android.widget.Toast.LENGTH_SHORT).show()
                         }
-                        context.startActivity(intent)
+                    } catch (e: Exception) {
+                        android.widget.Toast.makeText(context, "Gagal membuka video: ${e.localizedMessage}", android.widget.Toast.LENGTH_LONG).show()
                     }
                 },
                 onShare = { item ->
-                    val file = File(item.path)
-                    if (file.exists()) {
-                        val uri = FileProvider.getUriForFile(
-                            context,
-                            "${context.packageName}.fileprovider",
-                            file
-                        )
-                        val intent = Intent(Intent.ACTION_SEND).apply {
-                            type = "video/mp4"
-                            putExtra(Intent.EXTRA_STREAM, uri)
-                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    try {
+                        val file = File(item.path)
+                        if (file.exists()) {
+                            val uri: Uri = try {
+                                FileProvider.getUriForFile(
+                                    context,
+                                    "${context.packageName}.fileprovider",
+                                    file
+                                )
+                            } catch (e: Exception) {
+                                Uri.fromFile(file)
+                            }
+                            val intent = Intent(Intent.ACTION_SEND).apply {
+                                type = "video/*"
+                                putExtra(Intent.EXTRA_STREAM, uri)
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            val chooser = Intent.createChooser(intent, "Bagikan Video")
+                            chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            context.startActivity(chooser)
+                        } else {
+                            android.widget.Toast.makeText(context, "File tidak ditemukan: ${item.name}", android.widget.Toast.LENGTH_SHORT).show()
                         }
-                        context.startActivity(Intent.createChooser(intent, "Share Compressed Video"))
+                    } catch (e: Exception) {
+                        android.widget.Toast.makeText(context, "Gagal membagikan video: ${e.localizedMessage}", android.widget.Toast.LENGTH_LONG).show()
                     }
                 }
             )

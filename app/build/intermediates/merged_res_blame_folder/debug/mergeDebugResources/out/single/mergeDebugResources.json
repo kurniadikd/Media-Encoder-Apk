@@ -12,6 +12,10 @@
         "source": "C:\\Users\\Kurniadi\\.gradle\\daemon\\8.9\\com.example.videoencoder.app-main-6:\\xml\\backup_rules.xml"
     },
     {
+        "merged": "C:\\Users\\Kurniadi\\.gradle\\daemon\\8.9\\com.example.videoencoder.app-debug-4:\\xml_file_paths.xml.flat",
+        "source": "C:\\Users\\Kurniadi\\.gradle\\daemon\\8.9\\com.example.videoencoder.app-main-6:\\xml\\file_paths.xml"
+    },
+    {
         "merged": "com.example.videoencoder.app-debug-4:/xml_file_paths.xml.flat",
         "source": "com.example.videoencoder.app-main-6:/xml/file_paths.xml"
     }
