@@ -86,6 +86,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FloatingActionButtonDefaults
+import androidx.compose.material3.LargeFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -411,19 +412,21 @@ fun MainScreenView(
                     }
                 }
 
-                // Main FAB Button with Native M3 Icon Morphing Rotation
-                FloatingActionButton(
+                // Main Large FAB Button with Native M3 Icon Morphing Rotation & Secondary Color Scheme
+                LargeFloatingActionButton(
                     onClick = { isFabMenuExpanded = !isFabMenuExpanded },
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                     shape = CircleShape
                 ) {
                     Icon(
                         imageVector = Icons.Default.Add,
                         contentDescription = "Menu Input Media",
-                        modifier = Modifier.graphicsLayer {
-                            rotationZ = fabIconRotation
-                        }
+                        modifier = Modifier
+                            .size(36.dp)
+                            .graphicsLayer {
+                                rotationZ = fabIconRotation
+                            }
                     )
                 }
             }
