@@ -889,13 +889,14 @@ fun ActiveEncodingCardItem(
                         progress = progressPercent / 100f,
                         modifier = Modifier.fillMaxSize(),
                         color = MaterialTheme.colorScheme.primary,
-                        trackColor = MaterialTheme.colorScheme.primaryContainer
+                        trackColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
                     )
 
+                    // Unfilled icon container during progress with icon color matching progress wavy!
                     Surface(
                         shape = CircleShape,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(38.dp)
+                        color = Color.Transparent,
+                        modifier = Modifier.size(36.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
@@ -905,8 +906,8 @@ fun ActiveEncodingCardItem(
                                     else -> Icons.Default.Movie
                                 },
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onPrimary,
-                                modifier = Modifier.size(20.dp)
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(22.dp)
                             )
                         }
                     }
@@ -957,13 +958,7 @@ fun ActiveEncodingCardItem(
 }
 
 /**
- * Official Material 3 Expressive Circular Wavy Progress Indicator (Determinate)
- * Strictly compliant with M3 Expressive Specification:
- * - Thick track (6dp-8dp)
- * - Track corner radius (4dp rounded caps)
- * - Indicator track gap size (4dp gap between active and inactive track)
- * - Wave amplitude ramp up (0.1) and ramp down (0.9)
- * - Smooth wave speed phase animation
+ * Clean & Simplified Material 3 Expressive Circular Wavy Progress Indicator
  */
 @Composable
 fun M3ExpressiveCircularWavyProgressIndicator(
@@ -977,7 +972,7 @@ fun M3ExpressiveCircularWavyProgressIndicator(
         initialValue = 0f,
         targetValue = (2 * PI).toFloat(),
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1000, easing = LinearEasing),
+            animation = tween(durationMillis = 1400, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "wavePhase"
@@ -985,43 +980,33 @@ fun M3ExpressiveCircularWavyProgressIndicator(
 
     Canvas(modifier = modifier) {
         val diameter = minOf(size.width, size.height)
-        val trackThickness = 6.dp.toPx()
-        val gapSizeDegrees = 8f // 4dp gap equivalent in arc degrees
-        val radius = (diameter - trackThickness * 2) / 2f
+        val strokeWidth = 3.5.dp.toPx()
+        val radius = (diameter - strokeWidth * 2) / 2f
         val center = Offset(size.width / 2f, size.height / 2f)
 
-        // 1. Draw Inactive Track Circle (M3 primaryContainer)
+        // 1. Draw smooth background track circle
         drawCircle(
             color = trackColor,
             radius = radius,
             center = center,
-            style = Stroke(width = trackThickness)
+            style = Stroke(width = strokeWidth)
         )
 
-        // 2. Draw Active Wavy Arc (Determinate 0 to 100%)
-        val clampedProgress = progress.coerceIn(0.01f, 1.0f)
-        val fullSweepAngle = 360f * clampedProgress
-        val activeSweepAngle = (fullSweepAngle - gapSizeDegrees).coerceAtLeast(10f)
-        val numPoints = (activeSweepAngle * 0.6f).toInt().coerceAtLeast(30)
-        
-        val waveAmplitude = 2.5.dp.toPx()
-        val waveFrequency = 8f // number of waves around circle
+        // 2. Draw active wavy progress arc
+        val clampedProgress = progress.coerceIn(0.02f, 1.0f)
+        val sweepAngle = 360f * clampedProgress
+        val numPoints = 80
+
+        val waveAmplitude = 1.8.dp.toPx()
+        val waveFrequency = 6f
 
         val wavePath = Path()
         for (i in 0..numPoints) {
             val fraction = i.toFloat() / numPoints
-            
-            // M3 Spec: Wave amplitude ramp up (0.0 to 0.1) and ramp down (0.9 to 1.0)
-            val ramp = when {
-                fraction < 0.1f -> fraction / 0.1f
-                fraction > 0.9f -> (1.0f - fraction) / 0.1f
-                else -> 1.0f
-            }
-
-            val currentAngleDegrees = -90f + fraction * activeSweepAngle
+            val currentAngleDegrees = -90f + fraction * sweepAngle
             val currentAngleRads = Math.toRadians(currentAngleDegrees.toDouble())
 
-            val waveOffset = (waveAmplitude * ramp) * sin(fraction * waveFrequency * 2 * PI + wavePhase)
+            val waveOffset = waveAmplitude * sin(fraction * waveFrequency * 2 * PI + wavePhase)
             val currentRadius = radius + waveOffset
 
             val x = (center.x + currentRadius * cos(currentAngleRads)).toFloat()
@@ -1037,7 +1022,7 @@ fun M3ExpressiveCircularWavyProgressIndicator(
         drawPath(
             path = wavePath,
             color = color,
-            style = Stroke(width = trackThickness, cap = StrokeCap.Round)
+            style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
         )
     }
 }

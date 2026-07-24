@@ -80,7 +80,35 @@ class VideoEncodingEngine(private val context: Context) {
         return builder.build()
     }
 
+    fun prepareInputUri(inputUri: Uri): Uri {
+        if (inputUri.scheme == "file") return inputUri
+
+        return try {
+            val cacheDir = context.cacheDir
+            cacheDir.listFiles()?.forEach { file ->
+                if (file.name.startsWith("input_media_temp_")) {
+                    try { file.delete() } catch (_: Exception) {}
+                }
+            }
+
+            val cacheFile = File(cacheDir, "input_media_temp_${System.currentTimeMillis()}.tmp")
+            context.contentResolver.openInputStream(inputUri)?.use { input ->
+                cacheFile.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
+            if (cacheFile.exists() && cacheFile.length() > 0) {
+                Uri.fromFile(cacheFile)
+            } else {
+                inputUri
+            }
+        } catch (_: Exception) {
+            inputUri
+        }
+    }
+
     fun createEditedMediaItem(inputUri: Uri, config: EncodingConfig): EditedMediaItem {
+        val seekableUri = prepareInputUri(inputUri)
         val videoEffects = mutableListOf<androidx.media3.common.Effect>()
 
         if (config.targetWidth > 0 && config.targetHeight > 0) {
@@ -97,7 +125,7 @@ class VideoEncodingEngine(private val context: Context) {
             videoEffects.add(rotationEffect)
         }
 
-        val builder = EditedMediaItem.Builder(MediaItem.fromUri(inputUri))
+        val builder = EditedMediaItem.Builder(MediaItem.fromUri(seekableUri))
 
         if (videoEffects.isNotEmpty()) {
             builder.setEffects(Effects(emptyList(), videoEffects))
