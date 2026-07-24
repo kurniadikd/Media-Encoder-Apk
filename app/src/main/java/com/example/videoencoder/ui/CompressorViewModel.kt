@@ -23,7 +23,7 @@ import kotlinx.coroutines.launch
 import java.io.File
 
 enum class ResolutionPreset(val label: String, val width: Int, val height: Int) {
-    ORIGINAL("Original", 0, 0),
+    DEFAULT("Default (Bawaan Video)", 0, 0),
     RES_4K("4K (2160p)", 3840, 2160),
     FHD_1080P("1080p (FHD)", 1920, 1080),
     HD_720P("720p (HD)", 1280, 720),
@@ -32,12 +32,14 @@ enum class ResolutionPreset(val label: String, val width: Int, val height: Int) 
 }
 
 enum class BitrateModeOption(val label: String, val modeValue: Int) {
+    DEFAULT("Default (Auto VBR)", 1),
     VBR("VBR (Variable)", 1),
     CBR("CBR (Constant)", 2),
     CQ("CQ (Constant Quality)", 0)
 }
 
 enum class ScaleModeOption(val label: String, val modeValue: Int) {
+    DEFAULT("Default (Bawaan Video)", Presentation.LAYOUT_SCALE_TO_FIT),
     FIT("Fit Inside", Presentation.LAYOUT_SCALE_TO_FIT),
     CROP("Crop to Fit", Presentation.LAYOUT_SCALE_TO_FIT_WITH_CROP),
     STRETCH("Stretch", Presentation.LAYOUT_STRETCH_TO_FIT)
@@ -67,19 +69,20 @@ data class EncodedFileItem(
 data class CompressorUiState(
     val selectedVideo: SelectedVideoMetadata? = null,
     
-    // Video Codec & Hardware Parameters
-    val outputFormat: String = MimeTypes.VIDEO_H265,      // H.265 (HEVC), H.264 (AVC), VP9, AV1
-    val targetBitrateMbps: Float = 4.0f,                    // 4 Mbps default
-    val bitrateModeOption: BitrateModeOption = BitrateModeOption.VBR,
-    val resolutionPreset: ResolutionPreset = ResolutionPreset.FHD_1080P,
-    val scaleModeOption: ScaleModeOption = ScaleModeOption.FIT,
-    val frameRate: Int = 30,                                // 15, 24, 30, 50, 60 FPS
-    val iFrameIntervalSec: Float = 2.0f,                    // Keyframe interval
-    val rotationDegrees: Float = 0.0f,                      // 0, 90, 180, 270 degrees
+    // Video Codec & Hardware Parameters (Default = "DEFAULT" / 0)
+    val outputFormat: String = "DEFAULT",                 // "DEFAULT" or specific codec MIME type
+    val useAutoBitrate: Boolean = true,                     // true = Auto Bitrate (Unset/Default)
+    val targetBitrateMbps: Float = 4.0f,                    // Custom Bitrate if enabled
+    val bitrateModeOption: BitrateModeOption = BitrateModeOption.DEFAULT,
+    val resolutionPreset: ResolutionPreset = ResolutionPreset.DEFAULT,
+    val scaleModeOption: ScaleModeOption = ScaleModeOption.DEFAULT,
+    val frameRate: Int = 0,                                 // 0 = Default FPS
+    val iFrameIntervalSec: Float = 0.0f,                    // 0 = Default Keyframe
+    val rotationDegrees: Float = 0.0f,                      // 0° = Normal
 
     // Audio Parameters
-    val audioFormat: String = MimeTypes.AUDIO_AAC,         // AAC, Opus, AMR_WB
-    val audioBitrateKbps: Int = 128,                       // 64, 96, 128, 192, 256, 320 kbps
+    val audioFormat: String = "DEFAULT",                    // "DEFAULT" or specific Audio MIME type
+    val audioBitrateKbps: Int = 0,                          // 0 = Default Audio Bitrate
     val isAudioMuted: Boolean = false,                      // Mute Audio
 
     // Storage Destination
@@ -180,6 +183,9 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
 
     private fun discoverHardwareEncoders() {
         val result = mutableListOf<Pair<String, String>>()
+        // Always include "Default (Bawaan Video / System)" as first option
+        result.add("DEFAULT" to "Default (Bawaan System)")
+
         try {
             val codecList = android.media.MediaCodecList(android.media.MediaCodecList.REGULAR_CODECS)
             for (info in codecList.codecInfos) {
@@ -205,7 +211,7 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
             }
         } catch (_: Exception) {}
 
-        if (result.isEmpty()) {
+        if (result.size <= 1) {
             result.add(MimeTypes.VIDEO_H265 to "HEVC (H.265)")
             result.add(MimeTypes.VIDEO_H264 to "AVC (H.264)")
             result.add(MimeTypes.VIDEO_VP9 to "VP9")
@@ -263,6 +269,16 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    fun clearSelectedVideo() {
+        _uiState.update {
+            it.copy(
+                selectedVideo = null,
+                completedOutputPath = null,
+                errorMessage = null
+            )
+        }
+    }
+
     fun onVideoSelected(uri: Uri) {
         viewModelScope.launch {
             val context = getApplication<Application>().applicationContext
@@ -311,9 +327,16 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    fun setUseAutoBitrate(auto: Boolean) {
+        _uiState.update { current ->
+            val updated = current.copy(useAutoBitrate = auto)
+            updated.copy(estimatedSizeMb = calculateEstimatedSize(updated))
+        }
+    }
+
     fun setTargetBitrate(bitrateMbps: Float) {
         _uiState.update { current ->
-            val updated = current.copy(targetBitrateMbps = bitrateMbps)
+            val updated = current.copy(useAutoBitrate = false, targetBitrateMbps = bitrateMbps)
             updated.copy(estimatedSizeMb = calculateEstimatedSize(updated))
         }
     }
@@ -386,10 +409,10 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
         val extension = "mp4"
         val outputFile = File(outputDir, "compressed_${System.currentTimeMillis()}.$extension")
 
-        val targetWidth = if (state.resolutionPreset == ResolutionPreset.ORIGINAL) video.width else state.resolutionPreset.width
-        val targetHeight = if (state.resolutionPreset == ResolutionPreset.ORIGINAL) video.height else state.resolutionPreset.height
+        val targetWidth = if (state.resolutionPreset == ResolutionPreset.DEFAULT || state.resolutionPreset == ResolutionPreset.ORIGINAL) 0 else state.resolutionPreset.width
+        val targetHeight = if (state.resolutionPreset == ResolutionPreset.DEFAULT || state.resolutionPreset == ResolutionPreset.ORIGINAL) 0 else state.resolutionPreset.height
 
-        val bitrateBps = (state.targetBitrateMbps * 1_000_000).toInt()
+        val bitrateBps = if (state.useAutoBitrate) 0 else (state.targetBitrateMbps * 1_000_000).toInt()
         val audioBitrateBps = state.audioBitrateKbps * 1000
 
         val serviceIntent = Intent(context, EncodingService::class.java).apply {
@@ -427,8 +450,8 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
 
     private fun calculateEstimatedSize(state: CompressorUiState): Float {
         val video = state.selectedVideo ?: return 0.0f
-        val videoBitrateBps = state.targetBitrateMbps * 1_000_000f
-        val audioBitrateBps = if (state.isAudioMuted) 0f else state.audioBitrateKbps * 1000f
+        val videoBitrateBps = if (state.useAutoBitrate) (video.sizeBytes * 8f / video.durationSec.coerceAtLeast(1)) * 0.7f else state.targetBitrateMbps * 1_000_000f
+        val audioBitrateBps = if (state.isAudioMuted) 0f else (if (state.audioBitrateKbps == 0) 128_000f else state.audioBitrateKbps * 1000f)
         val totalBitrateBps = videoBitrateBps + audioBitrateBps
         // Est Size (MB) = (Total Bitrate (bps) / 8 * Duration (s)) / 1,000,000
         return (totalBitrateBps / 8.0f * video.durationSec) / 1_000_000f

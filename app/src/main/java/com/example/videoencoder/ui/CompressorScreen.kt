@@ -2,6 +2,7 @@ package com.example.videoencoder.ui
 
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -29,6 +30,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.RotateRight
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
@@ -61,6 +63,7 @@ import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -107,6 +110,11 @@ fun CompressorScreen(
     val context = LocalContext.current
     var isAdvancedExpanded by remember { mutableStateOf(false) }
 
+    // Intercept native Back button when video is selected
+    BackHandler(enabled = uiState.selectedVideo != null && !uiState.isEncoding) {
+        viewModel.clearSelectedVideo()
+    }
+
     val mediaPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri ->
@@ -116,6 +124,22 @@ fun CompressorScreen(
     Scaffold(
         topBar = {
             TopAppBar(
+                navigationIcon = {
+                    if (uiState.selectedVideo != null) {
+                        IconButton(
+                            onClick = {
+                                if (!uiState.isEncoding) {
+                                    viewModel.clearSelectedVideo()
+                                }
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Kembali"
+                            )
+                        }
+                    }
+                },
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Surface(
@@ -212,6 +236,7 @@ fun CompressorScreen(
                 // 4. Bitrate & Bitrate Control Mode
                 BitrateSection(
                     uiState = uiState,
+                    viewModel = viewModel,
                     onBitrateChanged = { viewModel.setTargetBitrate(it) },
                     onBitrateModeSelected = { viewModel.setBitrateModeOption(it) },
                     enabled = !uiState.isEncoding
@@ -481,7 +506,8 @@ fun CodecSelectorSection(
         uiState.availableVideoEncoders
     } else {
         listOf(
-            MimeTypes.VIDEO_H265 to "HEVC (H.265) ★ Recommended",
+            "DEFAULT" to "Default (Bawaan System)",
+            MimeTypes.VIDEO_H265 to "HEVC (H.265)",
             MimeTypes.VIDEO_H264 to "AVC (H.264)",
             MimeTypes.VIDEO_VP9 to "VP9",
             MimeTypes.VIDEO_AV1 to "AV1 (Next-Gen)"
@@ -490,7 +516,7 @@ fun CodecSelectorSection(
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
-            text = "Video Codec Encoder (Hardware Discovered)",
+            text = "Video Codec Encoder",
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
             color = MaterialTheme.colorScheme.onBackground
         )
@@ -602,6 +628,7 @@ fun ResolutionAndScaleSection(
 @Composable
 fun BitrateSection(
     uiState: CompressorUiState,
+    viewModel: CompressorViewModel,
     onBitrateChanged: (Float) -> Unit,
     onBitrateModeSelected: (BitrateModeOption) -> Unit,
     enabled: Boolean
@@ -620,31 +647,61 @@ fun BitrateSection(
 
             Surface(
                 shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.primaryContainer
+                color = if (uiState.useAutoBitrate) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primaryContainer
             ) {
                 Text(
-                    text = String.format(Locale.US, "%.1f Mbps", uiState.targetBitrateMbps),
+                    text = if (uiState.useAutoBitrate) "Default (Auto)" else String.format(Locale.US, "%.1f Mbps", uiState.targetBitrateMbps),
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontWeight = FontWeight.ExtraBold,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                        color = if (uiState.useAutoBitrate) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onPrimaryContainer
                     ),
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                 )
             }
         }
 
-        Slider(
-            value = uiState.targetBitrateMbps,
-            onValueChange = onBitrateChanged,
-            valueRange = 1.0f..30.0f,
-            steps = 57,
-            enabled = enabled,
-            colors = SliderDefaults.colors(
-                thumbColor = MaterialTheme.colorScheme.primary,
-                activeTrackColor = MaterialTheme.colorScheme.primary,
-                inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(
+                selected = uiState.useAutoBitrate,
+                onClick = { viewModel.setUseAutoBitrate(true) },
+                label = { Text("Default (Auto System)") },
+                enabled = enabled,
+                shape = RoundedCornerShape(12.dp),
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = MaterialTheme.colorScheme.primary,
+                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                ),
+                border = null
             )
-        )
+
+            FilterChip(
+                selected = !uiState.useAutoBitrate,
+                onClick = { viewModel.setUseAutoBitrate(false) },
+                label = { Text("Custom Bitrate") },
+                enabled = enabled,
+                shape = RoundedCornerShape(12.dp),
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = MaterialTheme.colorScheme.primary,
+                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                ),
+                border = null
+            )
+        }
+
+        if (!uiState.useAutoBitrate) {
+            Slider(
+                value = uiState.targetBitrateMbps,
+                onValueChange = onBitrateChanged,
+                valueRange = 1.0f..30.0f,
+                steps = 57,
+                enabled = enabled,
+                colors = SliderDefaults.colors(
+                    thumbColor = MaterialTheme.colorScheme.primary,
+                    activeTrackColor = MaterialTheme.colorScheme.primary,
+                    inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            )
+        }
 
         // Bitrate Control Mode (VBR, CBR, CQ)
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -669,7 +726,7 @@ fun BitrateSection(
                         ),
                         border = SegmentedButtonDefaults.borderStroke(color = Color.Transparent)
                     ) {
-                        Text(option.label, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text(option.label, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -836,11 +893,11 @@ fun AdvancedParametersSection(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            listOf(60, 50, 30, 24, 15).forEach { fps ->
+                            listOf(0 to "Default (FPS Asli)", 60 to "60 FPS", 50 to "50 FPS", 30 to "30 FPS", 24 to "24 FPS", 15 to "15 FPS").forEach { (fps, label) ->
                                 FilterChip(
                                     selected = uiState.frameRate == fps,
                                     onClick = { viewModel.setFrameRate(fps) },
-                                    label = { Text("$fps FPS") },
+                                    label = { Text(label) },
                                     enabled = enabled,
                                     shape = RoundedCornerShape(12.dp),
                                     colors = FilterChipDefaults.filterChipColors(
@@ -863,11 +920,11 @@ fun AdvancedParametersSection(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            listOf(1.0f, 2.0f, 3.0f, 5.0f).forEach { sec ->
+                            listOf(0.0f to "Default (Auto)", 1.0f to "1.0s", 2.0f to "2.0s", 3.0f to "3.0s", 5.0f to "5.0s").forEach { (sec, label) ->
                                 FilterChip(
                                     selected = uiState.iFrameIntervalSec == sec,
                                     onClick = { viewModel.setIFrameInterval(sec) },
-                                    label = { Text("${sec}s") },
+                                    label = { Text(label) },
                                     enabled = enabled,
                                     shape = RoundedCornerShape(12.dp),
                                     colors = FilterChipDefaults.filterChipColors(
@@ -952,6 +1009,7 @@ fun AdvancedParametersSection(
                                 Text(text = "Audio Format Codec", style = MaterialTheme.typography.labelMedium)
                                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     listOf(
+                                        "DEFAULT" to "Default (Audio Asli)",
                                         MimeTypes.AUDIO_AAC to "AAC",
                                         MimeTypes.AUDIO_OPUS to "Opus",
                                         MimeTypes.AUDIO_AMR_WB to "AMR-WB"
@@ -976,11 +1034,11 @@ fun AdvancedParametersSection(
                             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text(text = "Audio Bitrate", style = MaterialTheme.typography.labelMedium)
                                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    listOf(320, 256, 192, 128, 96, 64).forEach { kbps ->
+                                    listOf(0 to "Default (Auto)", 320 to "320 kbps", 256 to "256 kbps", 192 to "192 kbps", 128 to "128 kbps", 96 to "96 kbps", 64 to "64 kbps").forEach { (kbps, label) ->
                                         FilterChip(
                                             selected = uiState.audioBitrateKbps == kbps,
                                             onClick = { viewModel.setAudioBitrate(kbps) },
-                                            label = { Text("$kbps kbps") },
+                                            label = { Text(label) },
                                             enabled = enabled,
                                             shape = RoundedCornerShape(12.dp),
                                             colors = FilterChipDefaults.filterChipColors(
