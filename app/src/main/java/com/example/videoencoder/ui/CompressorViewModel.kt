@@ -26,6 +26,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
+enum class AppScreen {
+    MAIN, PREPROCESS
+}
+
 enum class MediaType(val label: String) {
     VIDEO("Video"),
     IMAGE("Gambar"),
@@ -43,8 +47,8 @@ enum class ResolutionPreset(val label: String, val width: Int, val height: Int) 
 
 enum class BitrateModeOption(val label: String, val modeValue: Int) {
     DEFAULT("Default (Auto VBR)", 1),
-    VBR("VBR (Variable)", 1),
-    CBR("CBR (Constant)", 2),
+    VBR("VBR (Variable Bitrate)", 1),
+    CBR("CBR (Constant Bitrate)", 2),
     CQ("CQ (Constant Quality)", 0)
 }
 
@@ -75,10 +79,14 @@ data class EncodedFileItem(
     val path: String,
     val sizeBytes: Long,
     val lastModifiedMs: Long,
-    val mediaType: MediaType
+    val mediaType: MediaType,
+    val isEncodingActive: Boolean = false,
+    val progressPercent: Int = 100,
+    val statusText: String = ""
 )
 
 data class CompressorUiState(
+    val currentScreen: AppScreen = AppScreen.MAIN,
     val selectedMedia: SelectedMediaItem? = null,
     
     // Video Codec & Hardware Parameters
@@ -113,6 +121,7 @@ data class CompressorUiState(
     val isEncoding: Boolean = false,
     val encodingProgress: Int = 0,
     val encodingStatusText: String = "",
+    val activeEncodingFileName: String? = null,
     val completedOutputPath: String? = null,
     val errorMessage: String? = null,
     val encodedHistory: List<EncodedFileItem> = emptyList()
@@ -140,7 +149,7 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                                 it.copy(
                                     isEncoding = true,
                                     encodingProgress = serviceState.progressPercent,
-                                    encodingStatusText = "Encoding... ${serviceState.progressPercent}%",
+                                    encodingStatusText = "Proses Hardware Encoding... ${serviceState.progressPercent}%",
                                     errorMessage = null
                                 )
                             }
@@ -150,9 +159,10 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                                 it.copy(
                                     isEncoding = false,
                                     encodingProgress = 100,
-                                    encodingStatusText = "Done!",
+                                    encodingStatusText = "Selesai!",
                                     completedOutputPath = serviceState.outputPath,
-                                    errorMessage = null
+                                    errorMessage = null,
+                                    activeEncodingFileName = null
                                 )
                             }
                             refreshEncodedHistory()
@@ -162,8 +172,9 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                                 it.copy(
                                     isEncoding = false,
                                     encodingProgress = 0,
-                                    encodingStatusText = "Error",
-                                    errorMessage = serviceState.errorMessage
+                                    encodingStatusText = "Gagal",
+                                    errorMessage = serviceState.errorMessage,
+                                    activeEncodingFileName = null
                                 )
                             }
                         }
@@ -172,7 +183,8 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                                 it.copy(
                                     isEncoding = false,
                                     encodingProgress = 0,
-                                    encodingStatusText = "Cancelled"
+                                    encodingStatusText = "Dibatalkan",
+                                    activeEncodingFileName = null
                                 )
                             }
                         }
@@ -272,7 +284,10 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                             path = file.absolutePath,
                             sizeBytes = file.length(),
                             lastModifiedMs = file.lastModified(),
-                            mediaType = mediaType
+                            mediaType = mediaType,
+                            isEncodingActive = false,
+                            progressPercent = 100,
+                            statusText = "Selesai"
                         )
                     }
             }
@@ -295,10 +310,21 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
     fun clearSelectedVideo() {
         _uiState.update {
             it.copy(
+                currentScreen = AppScreen.MAIN,
                 selectedMedia = null,
                 completedOutputPath = null,
                 errorMessage = null
             )
+        }
+    }
+
+    fun navigateToMainScreen() {
+        _uiState.update { it.copy(currentScreen = AppScreen.MAIN) }
+    }
+
+    fun navigateToPreprocessScreen() {
+        if (_uiState.value.selectedMedia != null) {
+            _uiState.update { it.copy(currentScreen = AppScreen.PREPROCESS) }
         }
     }
 
@@ -333,7 +359,12 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                             height = height
                         )
                         _uiState.update { current ->
-                            val updated = current.copy(selectedMedia = metadata, completedOutputPath = null, errorMessage = null)
+                            val updated = current.copy(
+                                currentScreen = AppScreen.PREPROCESS,
+                                selectedMedia = metadata,
+                                completedOutputPath = null,
+                                errorMessage = null
+                            )
                             updated.copy(estimatedSizeMb = calculateEstimatedSize(updated))
                         }
                     } catch (e: Exception) {
@@ -357,7 +388,12 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                             height = options.outHeight
                         )
                         _uiState.update { current ->
-                            val updated = current.copy(selectedMedia = metadata, completedOutputPath = null, errorMessage = null)
+                            val updated = current.copy(
+                                currentScreen = AppScreen.PREPROCESS,
+                                selectedMedia = metadata,
+                                completedOutputPath = null,
+                                errorMessage = null
+                            )
                             updated.copy(estimatedSizeMb = calculateEstimatedSize(updated))
                         }
                     } catch (e: Exception) {
@@ -377,7 +413,12 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                             durationSec = durationMs / 1000
                         )
                         _uiState.update { current ->
-                            val updated = current.copy(selectedMedia = metadata, completedOutputPath = null, errorMessage = null)
+                            val updated = current.copy(
+                                currentScreen = AppScreen.PREPROCESS,
+                                selectedMedia = metadata,
+                                completedOutputPath = null,
+                                errorMessage = null
+                            )
                             updated.copy(estimatedSizeMb = calculateEstimatedSize(updated))
                         }
                     } catch (e: Exception) {
@@ -496,18 +537,20 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
             context.filesDir
         }
 
+        // Switch to MAIN screen to show unified encoding + history list
+        _uiState.update {
+            it.copy(
+                currentScreen = AppScreen.MAIN,
+                isEncoding = true,
+                encodingProgress = 0,
+                activeEncodingFileName = media.fileName,
+                encodingStatusText = "Memulai Hardware Encoding..."
+            )
+        }
+
         if (media.mediaType == MediaType.IMAGE) {
             val extension = state.imageFormat.lowercase()
             val outputFile = File(outputDir, "encoded_${System.currentTimeMillis()}.$extension")
-
-            _uiState.update {
-                it.copy(
-                    isEncoding = true,
-                    encodingProgress = 30,
-                    encodingStatusText = "Pengodean Gambar...",
-                    errorMessage = null
-                )
-            }
 
             viewModelScope.launch {
                 val engine = VideoEncodingEngine(context)
@@ -540,7 +583,8 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                             isEncoding = false,
                             encodingProgress = 100,
                             encodingStatusText = "Selesai!",
-                            completedOutputPath = outputFile.absolutePath
+                            completedOutputPath = outputFile.absolutePath,
+                            activeEncodingFileName = null
                         )
                     }
                     refreshEncodedHistory()
@@ -549,7 +593,8 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                         it.copy(
                             isEncoding = false,
                             encodingProgress = 0,
-                            errorMessage = "Gagal memproses pengodean gambar."
+                            errorMessage = "Gagal memproses pengodean gambar.",
+                            activeEncodingFileName = null
                         )
                     }
                 }
@@ -604,6 +649,13 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
             action = EncodingService.ACTION_CANCEL
         }
         context.startService(serviceIntent)
+        _uiState.update {
+            it.copy(
+                isEncoding = false,
+                encodingProgress = 0,
+                activeEncodingFileName = null
+            )
+        }
     }
 
     private fun calculateEstimatedSize(state: CompressorUiState): Float {

@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,6 +16,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
+import com.example.videoencoder.ui.AppScreen
 import com.example.videoencoder.ui.CompressorScreen
 import com.example.videoencoder.ui.CompressorViewModel
 import com.example.videoencoder.ui.MediaType
@@ -29,6 +31,8 @@ class MainActivity : ComponentActivity() {
     ) { _ -> }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Enable edge-to-edge for native transparent navigation & status bars
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
         checkAndRequestPermissions()
