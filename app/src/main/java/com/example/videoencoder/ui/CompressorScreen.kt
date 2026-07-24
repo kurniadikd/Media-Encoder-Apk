@@ -1121,21 +1121,28 @@ fun ActiveEncodingCardItem(
 }
 
 /**
- * Clean & Simplified Material 3 Expressive Circular Wavy Progress Indicator
+ * Official Material 3 Expressive Circular Wavy Progress Indicator
+ * Both active segment AND inactive segment follow a continuous 360-degree wavy track!
  */
 @Composable
 fun M3ExpressiveCircularWavyProgressIndicator(
     progress: Float,
     modifier: Modifier = Modifier,
     color: Color = MaterialTheme.colorScheme.primary,
-    trackColor: Color = MaterialTheme.colorScheme.primaryContainer
+    trackColor: Color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
 ) {
+    val animatedProgress by animateFloatAsState(
+        targetValue = progress.coerceIn(0.01f, 1.0f),
+        animationSpec = tween(durationMillis = 200, easing = LinearEasing),
+        label = "granular_progress"
+    )
+
     val infiniteTransition = rememberInfiniteTransition(label = "m3_expressive_circular_wave")
     val wavePhase by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = (2 * PI).toFloat(),
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1400, easing = LinearEasing),
+            animation = tween(durationMillis = 1200, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "wavePhase"
@@ -1147,26 +1154,49 @@ fun M3ExpressiveCircularWavyProgressIndicator(
         val radius = (diameter - strokeWidth * 2) / 2f
         val center = Offset(size.width / 2f, size.height / 2f)
 
-        // 1. Draw smooth background track circle
-        drawCircle(
-            color = trackColor,
-            radius = radius,
-            center = center,
-            style = Stroke(width = strokeWidth)
-        )
-
-        // 2. Draw active wavy progress arc with 100% CONSISTENT wave frequency along arc length
-        val clampedProgress = progress.coerceIn(0.02f, 1.0f)
-        val sweepAngle = 360f * clampedProgress
-        val numPoints = (sweepAngle * 0.8f).toInt().coerceAtLeast(20)
-
-        val waveAmplitude = 1.8.dp.toPx()
         val cyclesPerDegree = 8.0 / 360.0
+        val waveAmplitude = 1.8.dp.toPx()
+        val activeSweepAngle = 360f * animatedProgress
 
-        val wavePath = Path()
-        for (i in 0..numPoints) {
-            val fraction = i.toFloat() / numPoints
-            val angleDegrees = fraction * sweepAngle
+        // 1. Draw INACTIVE WAVY TRACK (the unreached path from activeSweepAngle to 360 degrees)
+        if (activeSweepAngle < 358f) {
+            val inactiveSweepAngle = 360f - activeSweepAngle
+            val numInactivePoints = (inactiveSweepAngle * 0.6f).toInt().coerceAtLeast(10)
+            val inactivePath = Path()
+
+            for (i in 0..numInactivePoints) {
+                val fraction = i.toFloat() / numInactivePoints
+                val angleDegrees = activeSweepAngle + fraction * inactiveSweepAngle
+                val currentAngleDegrees = -90f + angleDegrees
+                val currentAngleRads = Math.toRadians(currentAngleDegrees.toDouble())
+
+                val waveOffset = waveAmplitude * sin(angleDegrees * cyclesPerDegree * 2 * PI + wavePhase)
+                val currentRadius = radius + waveOffset
+
+                val x = (center.x + currentRadius * cos(currentAngleRads)).toFloat()
+                val y = (center.y + currentRadius * sin(currentAngleRads)).toFloat()
+
+                if (i == 0) {
+                    inactivePath.moveTo(x, y)
+                } else {
+                    inactivePath.lineTo(x, y)
+                }
+            }
+
+            drawPath(
+                path = inactivePath,
+                color = trackColor,
+                style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+            )
+        }
+
+        // 2. Draw ACTIVE WAVY TRACK (the reached path from 0 to activeSweepAngle)
+        val numActivePoints = (activeSweepAngle * 0.6f).toInt().coerceAtLeast(10)
+        val activePath = Path()
+
+        for (i in 0..numActivePoints) {
+            val fraction = i.toFloat() / numActivePoints
+            val angleDegrees = fraction * activeSweepAngle
             val currentAngleDegrees = -90f + angleDegrees
             val currentAngleRads = Math.toRadians(currentAngleDegrees.toDouble())
 
@@ -1177,14 +1207,14 @@ fun M3ExpressiveCircularWavyProgressIndicator(
             val y = (center.y + currentRadius * sin(currentAngleRads)).toFloat()
 
             if (i == 0) {
-                wavePath.moveTo(x, y)
+                activePath.moveTo(x, y)
             } else {
-                wavePath.lineTo(x, y)
+                activePath.lineTo(x, y)
             }
         }
 
         drawPath(
-            path = wavePath,
+            path = activePath,
             color = color,
             style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
         )

@@ -165,24 +165,26 @@ class EncodingService : Service() {
                 val progressHolder = ProgressHolder()
                 progressJob?.cancel()
                 progressJob = scope.launch {
-                    var simulatedProgress = 5
+                    var simulatedProgress = 5.0f
                     while (true) {
-                        delay(300)
+                        delay(50)
                         activeTransformer?.let { trans ->
                             val state = trans.getProgress(progressHolder)
                             val currentProgress = if (state == Transformer.PROGRESS_STATE_AVAILABLE) {
                                 progressHolder.progress
                             } else {
-                                if (simulatedProgress < 95) {
-                                    simulatedProgress += 1
+                                if (simulatedProgress < 95.0f) {
+                                    simulatedProgress += 0.25f
                                 }
-                                simulatedProgress
+                                simulatedProgress.toInt()
                             }
-                            _progressState.value = _progressState.value.copy(
-                                status = EncodingStatus.RUNNING,
-                                progressPercent = currentProgress
-                            )
-                            updateNotification(currentProgress, "Proses Pengodean: $currentProgress%", isFinished = false)
+                            if (_progressState.value.progressPercent != currentProgress) {
+                                _progressState.value = _progressState.value.copy(
+                                    status = EncodingStatus.RUNNING,
+                                    progressPercent = currentProgress
+                                )
+                                updateNotification(currentProgress, "Proses Pengodean: $currentProgress%", isFinished = false)
+                            }
                         }
                     }
                 }
