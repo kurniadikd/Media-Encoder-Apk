@@ -335,9 +335,9 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
         if (Build.VERSION.SDK_INT >= 31) {
             val perfClass = Build.VERSION.MEDIA_PERFORMANCE_CLASS
             val statusStr = when {
-                perfClass >= Build.VERSION_CODES.U -> "Flagship Class 14 (Sangat Cepat • 4K 60fps HEVC/AV1)"
-                perfClass >= Build.VERSION_CODES.TIRAMISU -> "Performance Class 13 (Tinggi • 1080p 60fps)"
-                perfClass >= Build.VERSION_CODES.S -> "Performance Class 12 (Standar • 1080p 30fps)"
+                perfClass >= 34 -> "Flagship Class 14 (Sangat Cepat • 4K 60fps HEVC/AV1)"
+                perfClass >= 33 -> "Performance Class 13 (Tinggi • 1080p 60fps)"
+                perfClass >= 31 -> "Performance Class 12 (Standar • 1080p 30fps)"
                 else -> "Standard Android Device Class"
             }
             addLog("Media Performance Class Perangkat: $statusStr (Level $perfClass)", LogLevel.INFO, "PERFORMANCE")
