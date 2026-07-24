@@ -263,6 +263,15 @@ fun MainScreenView(
                         try {
                             val file = File(item.path)
                             if (file.exists()) {
+                                try {
+                                    android.media.MediaScannerConnection.scanFile(
+                                        context.applicationContext,
+                                        arrayOf(file.absolutePath),
+                                        null,
+                                        null
+                                    )
+                                } catch (_: Exception) {}
+
                                 val uri: Uri = try {
                                     FileProvider.getUriForFile(
                                         context,
@@ -272,19 +281,38 @@ fun MainScreenView(
                                 } catch (e: Exception) {
                                     Uri.fromFile(file)
                                 }
+
                                 val mime = when (item.mediaType) {
                                     MediaType.IMAGE -> "image/*"
                                     MediaType.AUDIO -> "audio/*"
                                     else -> "video/*"
                                 }
-                                val intent = Intent(Intent.ACTION_VIEW).apply {
+
+                                val targetIntent = Intent(Intent.ACTION_VIEW).apply {
                                     setDataAndType(uri, mime)
                                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    addFlags(Intent.FLAG_GRANT_PREFIX_URI_PERMISSION)
                                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
                                 }
-                                val chooser = Intent.createChooser(intent, "Buka Berkas Dengan")
+
+                                val resInfoList = context.packageManager.queryIntentActivities(targetIntent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)
+                                for (resolveInfo in resInfoList) {
+                                    val packageName = resolveInfo.activityInfo.packageName
+                                    try {
+                                        context.grantUriPermission(
+                                            packageName,
+                                            uri,
+                                            Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                        )
+                                    } catch (_: Exception) {}
+                                }
+
+                                val chooser = Intent.createChooser(targetIntent, "Buka Berkas Dengan")
                                 chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                                 context.startActivity(chooser)
+                            } else {
+                                Toast.makeText(context, "Berkas tidak ditemukan: ${file.name}", Toast.LENGTH_SHORT).show()
                             }
                         } catch (e: Exception) {
                             Toast.makeText(context, "Gagal membuka media: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
@@ -303,20 +331,38 @@ fun MainScreenView(
                                 } catch (e: Exception) {
                                     Uri.fromFile(file)
                                 }
+
                                 val mime = when (item.mediaType) {
                                     MediaType.IMAGE -> "image/*"
                                     MediaType.AUDIO -> "audio/*"
                                     else -> "video/*"
                                 }
-                                val intent = Intent(Intent.ACTION_SEND).apply {
+
+                                val targetIntent = Intent(Intent.ACTION_SEND).apply {
                                     type = mime
                                     putExtra(Intent.EXTRA_STREAM, uri)
                                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    addFlags(Intent.FLAG_GRANT_PREFIX_URI_PERMISSION)
                                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                                 }
-                                val chooser = Intent.createChooser(intent, "Bagikan Berkas")
+
+                                val resInfoList = context.packageManager.queryIntentActivities(targetIntent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)
+                                for (resolveInfo in resInfoList) {
+                                    val packageName = resolveInfo.activityInfo.packageName
+                                    try {
+                                        context.grantUriPermission(
+                                            packageName,
+                                            uri,
+                                            Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                        )
+                                    } catch (_: Exception) {}
+                                }
+
+                                val chooser = Intent.createChooser(targetIntent, "Bagikan Berkas Media")
                                 chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                                 context.startActivity(chooser)
+                            } else {
+                                Toast.makeText(context, "Berkas tidak ditemukan: ${file.name}", Toast.LENGTH_SHORT).show()
                             }
                         } catch (e: Exception) {
                             Toast.makeText(context, "Gagal membagikan media: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
