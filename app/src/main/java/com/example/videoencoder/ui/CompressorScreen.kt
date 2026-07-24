@@ -191,7 +191,7 @@ fun CompressorScreen(
                         }
                         Spacer(modifier = Modifier.width(12.dp))
                         Text(
-                            text = "Hardware Media Encoder",
+                            text = "Media Encoder",
                             style = MaterialTheme.typography.titleLarge.copy(
                                 fontWeight = FontWeight.Bold
                             )

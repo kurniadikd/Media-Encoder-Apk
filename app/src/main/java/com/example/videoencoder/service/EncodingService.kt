@@ -27,7 +27,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import java.io.File
 
 class EncodingService : Service() {
 
@@ -106,7 +105,7 @@ class EncodingService : Service() {
     }
 
     fun startEncoding(inputUri: Uri, outputPath: String, config: EncodingConfig) {
-        val notification = createNotification(0, "Preparing compression...")
+        val notification = createNotification(0, "Memulai Pengodean Hardware...", isFinished = false)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(
                 NOTIFICATION_ID,
@@ -139,11 +138,11 @@ class EncodingService : Service() {
                     android.media.MediaScannerConnection.scanFile(
                         applicationContext,
                         arrayOf(outputPath),
-                        arrayOf("video/mp4"),
+                        null,
                         null
                     )
                 } catch (_: Exception) {}
-                updateNotification(100, "Encoding Completed Successfully!")
+                updateNotification(100, "Pengodean Selesai! 🎉", isFinished = true)
                 stopSelfWithDelay()
             },
             onError = { exception ->
@@ -152,7 +151,7 @@ class EncodingService : Service() {
                     status = EncodingStatus.ERROR,
                     errorMessage = exception.localizedMessage ?: "Hardware encoding error"
                 )
-                updateNotification(0, "Encoding Failed: ${exception.localizedMessage}")
+                updateNotification(0, "Pengodean Gagal: ${exception.localizedMessage}", isFinished = true)
                 stopSelfWithDelay()
             }
         )
@@ -173,7 +172,7 @@ class EncodingService : Service() {
                             status = EncodingStatus.RUNNING,
                             progressPercent = progress
                         )
-                        updateNotification(progress, "Encoding: $progress%")
+                        updateNotification(progress, "Proses Pengodean: $progress%", isFinished = false)
                     }
                 }
             }
@@ -184,39 +183,50 @@ class EncodingService : Service() {
         activeTransformer?.cancel()
         progressJob?.cancel()
         _progressState.value = ServiceProgressState(status = EncodingStatus.CANCELLED)
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
+        clearNotificationAndStop()
     }
 
     private fun stopSelfWithDelay() {
         scope.launch {
-            delay(3000)
-            stopForeground(STOP_FOREGROUND_DETACH)
-            stopSelf()
+            delay(2500)
+            clearNotificationAndStop()
         }
+    }
+
+    private fun clearNotificationAndStop() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION")
+            stopForeground(true)
+        }
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.cancel(NOTIFICATION_ID)
+        stopSelf()
     }
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "Video Hardware Encoding Service",
+                "Media Encoder Service",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Shows video encoding progress"
+                description = "Notifikasi status pengodean media"
             }
             val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             manager.createNotificationChannel(channel)
         }
     }
 
-    private fun createNotification(progress: Int, statusText: String) =
+    private fun createNotification(progress: Int, statusText: String, isFinished: Boolean) =
         NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Hardware Video Encoder")
+            .setContentTitle("Media Encoder")
             .setContentText(statusText)
             .setSmallIcon(android.R.drawable.ic_media_play)
-            .setProgress(100, progress, progress == 0)
-            .setOngoing(true)
+            .setProgress(100, progress, progress == 0 && !isFinished)
+            .setOngoing(!isFinished)
+            .setAutoCancel(true)
             .setContentIntent(
                 PendingIntent.getActivity(
                     this,
@@ -225,21 +235,25 @@ class EncodingService : Service() {
                     PendingIntent.FLAG_IMMUTABLE
                 )
             )
-            .addAction(
-                android.R.drawable.ic_menu_close_clear_cancel,
-                "Cancel",
-                PendingIntent.getService(
-                    this,
-                    1,
-                    Intent(this, EncodingService::class.java).apply { action = ACTION_CANCEL },
-                    PendingIntent.FLAG_IMMUTABLE
-                )
-            )
+            .apply {
+                if (!isFinished) {
+                    addAction(
+                        android.R.drawable.ic_menu_close_clear_cancel,
+                        "Batal",
+                        PendingIntent.getService(
+                            this@EncodingService,
+                            1,
+                            Intent(this@EncodingService, EncodingService::class.java).apply { action = ACTION_CANCEL },
+                            PendingIntent.FLAG_IMMUTABLE
+                        )
+                    )
+                }
+            }
             .build()
 
-    private fun updateNotification(progress: Int, statusText: String) {
+    private fun updateNotification(progress: Int, statusText: String, isFinished: Boolean) {
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.notify(NOTIFICATION_ID, createNotification(progress, statusText))
+        manager.notify(NOTIFICATION_ID, createNotification(progress, statusText, isFinished))
     }
 
     override fun onDestroy() {
