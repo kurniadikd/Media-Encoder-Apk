@@ -162,18 +162,24 @@ class EncodingService : Service() {
         val progressHolder = ProgressHolder()
         progressJob?.cancel()
         progressJob = scope.launch {
+            var simulatedProgress = 5
             while (true) {
                 delay(300)
                 activeTransformer?.let { trans ->
                     val state = trans.getProgress(progressHolder)
-                    if (state == Transformer.PROGRESS_STATE_AVAILABLE) {
-                        val progress = progressHolder.progress
-                        _progressState.value = _progressState.value.copy(
-                            status = EncodingStatus.RUNNING,
-                            progressPercent = progress
-                        )
-                        updateNotification(progress, "Proses Pengodean: $progress%", isFinished = false)
+                    val currentProgress = if (state == Transformer.PROGRESS_STATE_AVAILABLE) {
+                        progressHolder.progress
+                    } else {
+                        if (simulatedProgress < 95) {
+                            simulatedProgress += 1
+                        }
+                        simulatedProgress
                     }
+                    _progressState.value = _progressState.value.copy(
+                        status = EncodingStatus.RUNNING,
+                        progressPercent = currentProgress
+                    )
+                    updateNotification(currentProgress, "Proses Pengodean: $currentProgress%", isFinished = false)
                 }
             }
         }
