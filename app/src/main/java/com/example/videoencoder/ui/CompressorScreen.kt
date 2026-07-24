@@ -9,6 +9,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
@@ -42,6 +43,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -316,7 +318,7 @@ fun MainScreenView(
                     }
                 )
 
-                Spacer(modifier = Modifier.height(72.dp))
+                Spacer(modifier = Modifier.height(96.dp))
             }
         }
 
@@ -337,10 +339,11 @@ fun MainScreenView(
             )
         }
 
-        // 3. Native M3 Speed Dial FAB Menu Overlay (At top layer so buttons receive clicks cleanly!)
+        // 3. Native M3 Speed Dial FAB Menu Overlay with System Navigation Bar Inset Safety!
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .navigationBarsPadding()
                 .padding(bottom = 16.dp, end = 16.dp),
             contentAlignment = Alignment.BottomEnd
         ) {
@@ -460,6 +463,7 @@ fun PreprocessScreenView(
         },
         bottomBar = {
             Surface(
+                modifier = Modifier.navigationBarsPadding(),
                 color = MaterialTheme.colorScheme.surfaceVariant,
                 shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
             ) {
@@ -811,6 +815,7 @@ fun LogsScreenView(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .navigationBarsPadding()
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -1122,7 +1127,8 @@ fun ActiveEncodingCardItem(
 
 /**
  * Official Material 3 Expressive Circular Wavy Progress Indicator
- * Both active segment AND inactive segment follow a continuous 360-degree wavy track!
+ * - Both active segment AND inactive segment follow a continuous 360-degree wavy track!
+ * - Native Completion Flattening Animation: Ramps wave amplitude down from 1.8dp -> 0.0dp when progress reaches 100%!
  */
 @Composable
 fun M3ExpressiveCircularWavyProgressIndicator(
@@ -1135,6 +1141,13 @@ fun M3ExpressiveCircularWavyProgressIndicator(
         targetValue = progress.coerceIn(0.01f, 1.0f),
         animationSpec = tween(durationMillis = 200, easing = LinearEasing),
         label = "granular_progress"
+    )
+
+    // Native M3 Wave Flattening Completion Animation (flattens amplitude to 0.0dp when progress >= 1.0f / completed!)
+    val animatedWaveAmplitudeDp by animateFloatAsState(
+        targetValue = if (progress >= 1.0f) 0.0f else 1.8f,
+        animationSpec = tween(durationMillis = 350, easing = FastOutSlowInEasing),
+        label = "wave_flattening"
     )
 
     val infiniteTransition = rememberInfiniteTransition(label = "m3_expressive_circular_wave")
@@ -1155,7 +1168,7 @@ fun M3ExpressiveCircularWavyProgressIndicator(
         val center = Offset(size.width / 2f, size.height / 2f)
 
         val cyclesPerDegree = 8.0 / 360.0
-        val waveAmplitude = 1.8.dp.toPx()
+        val waveAmplitude = animatedWaveAmplitudeDp.dp.toPx()
         val activeSweepAngle = 360f * animatedProgress
 
         // 1. Draw INACTIVE WAVY TRACK (the unreached path from activeSweepAngle to 360 degrees)
