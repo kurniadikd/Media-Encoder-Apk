@@ -40,9 +40,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.calculateBottomPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -198,6 +202,7 @@ fun MainScreenView(
     Box(modifier = Modifier.fillMaxSize()) {
         // 1. Scaffold & List Content
         Scaffold(
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
             topBar = {
                 TopAppBar(
                     title = {
@@ -318,7 +323,7 @@ fun MainScreenView(
                     }
                 )
 
-                Spacer(modifier = Modifier.height(96.dp))
+                Spacer(modifier = Modifier.height(130.dp))
             }
         }
 
@@ -339,12 +344,14 @@ fun MainScreenView(
             )
         }
 
-        // 3. Native M3 Speed Dial FAB Menu Overlay with System Navigation Bar Inset Safety!
+        // 3. Native M3 Speed Dial FAB Menu Overlay with Proven Dynamic System Navigation Bar Safety!
+        val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+        val fabBottomPadding = if (navBarBottom > 0.dp) navBarBottom + 20.dp else 36.dp
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .navigationBarsPadding()
-                .padding(bottom = 16.dp, end = 16.dp),
+                .padding(bottom = fabBottomPadding, end = 16.dp),
             contentAlignment = Alignment.BottomEnd
         ) {
             Column(
@@ -437,6 +444,7 @@ fun PreprocessScreenView(
     }
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
                 navigationIcon = {
@@ -462,15 +470,17 @@ fun PreprocessScreenView(
             )
         },
         bottomBar = {
+            val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+            val bottomPadding = if (navBarBottom > 0.dp) navBarBottom + 16.dp else 24.dp
+
             Surface(
-                modifier = Modifier.navigationBarsPadding(),
                 color = MaterialTheme.colorScheme.surfaceVariant,
                 shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
+                        .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = bottomPadding),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -771,6 +781,7 @@ fun LogsScreenView(
     }
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
                 navigationIcon = {
@@ -811,13 +822,15 @@ fun LogsScreenView(
             )
         }
     ) { innerPadding ->
+        val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+        val bottomPadding = if (navBarBottom > 0.dp) navBarBottom + 16.dp else 24.dp
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .navigationBarsPadding()
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp),
+                .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = bottomPadding),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             if (uiState.logList.isEmpty()) {
@@ -1239,7 +1252,7 @@ fun EncodedHistoryCardItem(
     item: EncodedFileItem,
     onDelete: () -> Unit,
     onPlay: () -> Unit,
-    onShare: () -> Unit
+    onShare: (EncodedFileItem) -> Unit
 ) {
     val sizeMb = String.format(Locale.US, "%.1f MB", item.sizeBytes / 1_000_000f)
     val dateFormat = SimpleDateFormat("dd MMM, HH:mm", Locale.getDefault())
