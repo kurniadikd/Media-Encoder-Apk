@@ -9,9 +9,12 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -19,7 +22,11 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -59,7 +66,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.ExtendedFloatingActionButton
-import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FloatingActionButton
@@ -91,6 +97,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -126,6 +133,13 @@ fun MainScreenView(
     val context = LocalContext.current
     var isFabMenuExpanded by remember { mutableStateOf(false) }
 
+    // Native M3 Spring Rotation Animation for FAB Icon (0 -> 135 deg)
+    val fabIconRotation by animateFloatAsState(
+        targetValue = if (isFabMenuExpanded) 135f else 0f,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "fab_icon_rotation"
+    )
+
     BackHandler(enabled = isFabMenuExpanded) {
         isFabMenuExpanded = false
     }
@@ -149,192 +163,211 @@ fun MainScreenView(
         uri?.let { viewModel.onMediaSelected(it, MediaType.AUDIO) }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Surface(
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.primaryContainer,
-                            modifier = Modifier.size(40.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = Icons.Default.Speed,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                    modifier = Modifier.size(24.dp)
-                                )
+    Box(modifier = Modifier.fillMaxSize()) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                modifier = Modifier.size(40.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Default.Speed,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
                             }
-                        }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(
-                            text = "Media Encoder",
-                            style = MaterialTheme.typography.titleLarge.copy(
-                                fontWeight = FontWeight.Bold
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = "Media Encoder",
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    fontWeight = FontWeight.Bold
+                                )
                             )
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
-            )
-        },
-        floatingActionButton = {
-            // M3 Expressive FAB Menu Speed Dial
-            Column(
-                horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                AnimatedVisibility(
-                    visible = isFabMenuExpanded,
-                    enter = fadeIn() + expandVertically() + scaleIn(),
-                    exit = fadeOut() + shrinkVertically() + scaleOut()
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.End,
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        // 1. Video SAF
-                        ExtendedFloatingActionButton(
-                            onClick = {
-                                isFabMenuExpanded = false
-                                videoPickerLauncher.launch(arrayOf("video/*"))
-                            },
-                            icon = { Icon(Icons.Default.Movie, contentDescription = null) },
-                            text = { Text("Video", fontWeight = FontWeight.Bold) },
-                            containerColor = MaterialTheme.colorScheme.primaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                            shape = RoundedCornerShape(20.dp),
-                            elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)
-                        )
-
-                        // 2. Gambar SAF
-                        ExtendedFloatingActionButton(
-                            onClick = {
-                                isFabMenuExpanded = false
-                                imagePickerLauncher.launch(arrayOf("image/*"))
-                            },
-                            icon = { Icon(Icons.Default.Image, contentDescription = null) },
-                            text = { Text("Gambar", fontWeight = FontWeight.Bold) },
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                            shape = RoundedCornerShape(20.dp),
-                            elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)
-                        )
-
-                        // 3. Audio SAF
-                        ExtendedFloatingActionButton(
-                            onClick = {
-                                isFabMenuExpanded = false
-                                audioPickerLauncher.launch(arrayOf("audio/*"))
-                            },
-                            icon = { Icon(Icons.Default.Audiotrack, contentDescription = null) },
-                            text = { Text("Audio", fontWeight = FontWeight.Bold) },
-                            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-                            shape = RoundedCornerShape(20.dp),
-                            elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)
-                        )
-                    }
-                }
-
-                // Main FAB Button
-                FloatingActionButton(
-                    onClick = { isFabMenuExpanded = !isFabMenuExpanded },
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    shape = CircleShape
-                ) {
-                    Icon(
-                        imageVector = if (isFabMenuExpanded) Icons.Default.Close else Icons.Default.Add,
-                        contentDescription = "Menu Input Media"
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface
                     )
+                )
+            },
+            floatingActionButton = {
+                // Native Material 3 Expressive FAB Menu Speed Dial
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    AnimatedVisibility(
+                        visible = isFabMenuExpanded,
+                        enter = fadeIn(tween(150)) + slideInVertically(initialOffsetY = { it / 3 }, animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) + scaleIn(initialScale = 0.8f),
+                        exit = fadeOut(tween(100)) + slideOutVertically(targetOffsetY = { it / 3 }) + scaleOut(targetScale = 0.8f)
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.End,
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            // 1. Video SAF
+                            ExtendedFloatingActionButton(
+                                onClick = {
+                                    isFabMenuExpanded = false
+                                    videoPickerLauncher.launch(arrayOf("video/*"))
+                                },
+                                icon = { Icon(Icons.Default.Movie, contentDescription = null) },
+                                text = { Text("Video", fontWeight = FontWeight.Bold) },
+                                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                shape = RoundedCornerShape(20.dp),
+                                elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)
+                            )
+
+                            // 2. Gambar SAF
+                            ExtendedFloatingActionButton(
+                                onClick = {
+                                    isFabMenuExpanded = false
+                                    imagePickerLauncher.launch(arrayOf("image/*"))
+                                },
+                                icon = { Icon(Icons.Default.Image, contentDescription = null) },
+                                text = { Text("Gambar", fontWeight = FontWeight.Bold) },
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                shape = RoundedCornerShape(20.dp),
+                                elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)
+                            )
+
+                            // 3. Audio SAF
+                            ExtendedFloatingActionButton(
+                                onClick = {
+                                    isFabMenuExpanded = false
+                                    audioPickerLauncher.launch(arrayOf("audio/*"))
+                                },
+                                icon = { Icon(Icons.Default.Audiotrack, contentDescription = null) },
+                                text = { Text("Audio", fontWeight = FontWeight.Bold) },
+                                containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                                shape = RoundedCornerShape(20.dp),
+                                elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)
+                            )
+                        }
+                    }
+
+                    // Main FAB Button with Native M3 Icon Morphing Rotation
+                    FloatingActionButton(
+                        onClick = { isFabMenuExpanded = !isFabMenuExpanded },
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                        shape = CircleShape
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "Menu Input Media",
+                            modifier = Modifier.graphicsLayer {
+                                rotationZ = fabIconRotation
+                            }
+                        )
+                    }
                 }
             }
-        }
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp)
-        ) {
-            // Unified Encoded File List (Contains active encoding items AND finished history)
-            UnifiedMediaListSection(
-                uiState = uiState,
-                onCancelEncoding = { viewModel.cancelCompression() },
-                onDelete = { viewModel.deleteHistoryItem(it.path) },
-                onPlay = { item ->
-                    try {
-                        val file = File(item.path)
-                        if (file.exists()) {
-                            val uri: Uri = try {
-                                FileProvider.getUriForFile(
-                                    context,
-                                    "${context.packageName}.fileprovider",
-                                    file
-                                )
-                            } catch (e: Exception) {
-                                Uri.fromFile(file)
+        ) { innerPadding ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(20.dp)
+            ) {
+                // Unified Encoded File List (Contains active encoding items AND finished history)
+                UnifiedMediaListSection(
+                    uiState = uiState,
+                    onCancelEncoding = { viewModel.cancelCompression() },
+                    onDelete = { viewModel.deleteHistoryItem(it.path) },
+                    onPlay = { item ->
+                        try {
+                            val file = File(item.path)
+                            if (file.exists()) {
+                                val uri: Uri = try {
+                                    FileProvider.getUriForFile(
+                                        context,
+                                        "${context.packageName}.fileprovider",
+                                        file
+                                    )
+                                } catch (e: Exception) {
+                                    Uri.fromFile(file)
+                                }
+                                val mime = when (item.mediaType) {
+                                    MediaType.IMAGE -> "image/*"
+                                    MediaType.AUDIO -> "audio/*"
+                                    else -> "video/*"
+                                }
+                                val intent = Intent(Intent.ACTION_VIEW).apply {
+                                    setDataAndType(uri, mime)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                val chooser = Intent.createChooser(intent, "Buka Berkas Dengan")
+                                chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                context.startActivity(chooser)
                             }
-                            val mime = when (item.mediaType) {
-                                MediaType.IMAGE -> "image/*"
-                                MediaType.AUDIO -> "audio/*"
-                                else -> "video/*"
-                            }
-                            val intent = Intent(Intent.ACTION_VIEW).apply {
-                                setDataAndType(uri, mime)
-                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            }
-                            val chooser = Intent.createChooser(intent, "Buka Berkas Dengan")
-                            chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            context.startActivity(chooser)
+                        } catch (e: Exception) {
+                            android.widget.Toast.makeText(context, "Gagal membuka media: ${e.localizedMessage}", android.widget.Toast.LENGTH_LONG).show()
                         }
-                    } catch (e: Exception) {
-                        android.widget.Toast.makeText(context, "Gagal membuka media: ${e.localizedMessage}", android.widget.Toast.LENGTH_LONG).show()
-                    }
-                },
-                onShare = { item ->
-                    try {
-                        val file = File(item.path)
-                        if (file.exists()) {
-                            val uri: Uri = try {
-                                FileProvider.getUriForFile(
-                                    context,
-                                    "${context.packageName}.fileprovider",
-                                    file
-                                )
-                            } catch (e: Exception) {
-                                Uri.fromFile(file)
+                    },
+                    onShare = { item ->
+                        try {
+                            val file = File(item.path)
+                            if (file.exists()) {
+                                val uri: Uri = try {
+                                    FileProvider.getUriForFile(
+                                        context,
+                                        "${context.packageName}.fileprovider",
+                                        file
+                                    )
+                                } catch (e: Exception) {
+                                    Uri.fromFile(file)
+                                }
+                                val mime = when (item.mediaType) {
+                                    MediaType.IMAGE -> "image/*"
+                                    MediaType.AUDIO -> "audio/*"
+                                    else -> "video/*"
+                                }
+                                val intent = Intent(Intent.ACTION_SEND).apply {
+                                    type = mime
+                                    putExtra(Intent.EXTRA_STREAM, uri)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                val chooser = Intent.createChooser(intent, "Bagikan Berkas")
+                                chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                context.startActivity(chooser)
                             }
-                            val mime = when (item.mediaType) {
-                                MediaType.IMAGE -> "image/*"
-                                MediaType.AUDIO -> "audio/*"
-                                else -> "video/*"
-                            }
-                            val intent = Intent(Intent.ACTION_SEND).apply {
-                                type = mime
-                                putExtra(Intent.EXTRA_STREAM, uri)
-                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            }
-                            val chooser = Intent.createChooser(intent, "Bagikan Berkas")
-                            chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            context.startActivity(chooser)
+                        } catch (e: Exception) {
+                            android.widget.Toast.makeText(context, "Gagal membagikan media: ${e.localizedMessage}", android.widget.Toast.LENGTH_LONG).show()
                         }
-                    } catch (e: Exception) {
-                        android.widget.Toast.makeText(context, "Gagal membagikan media: ${e.localizedMessage}", android.widget.Toast.LENGTH_LONG).show()
                     }
-                }
-            )
+                )
 
-            Spacer(modifier = Modifier.height(72.dp))
+                Spacer(modifier = Modifier.height(72.dp))
+            }
+        }
+
+        // Native Material Dimmed Backdrop Scrim Overlay when FAB menu is open
+        AnimatedVisibility(
+            visible = isFabMenuExpanded,
+            enter = fadeIn(tween(200)),
+            exit = fadeOut(tween(150))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.35f))
+                    .clickable { isFabMenuExpanded = false }
+            )
         }
     }
 }
@@ -479,7 +512,7 @@ fun PreprocessScreenView(
                         onOptionSelected = { index -> viewModel.setResolutionPreset(resOptions[index]) }
                     )
 
-                    // 3. Target Bitrate Slider & Auto Option (Restored Slider!)
+                    // 3. Target Bitrate Slider & Auto Option
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
