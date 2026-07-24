@@ -9,6 +9,7 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.effect.Presentation
 import androidx.media3.effect.ScaleAndRotateTransformation
 import androidx.media3.transformer.Composition
+import androidx.media3.transformer.DefaultDecoderFactory
 import androidx.media3.transformer.DefaultEncoderFactory
 import androidx.media3.transformer.EditedMediaItem
 import androidx.media3.transformer.Effects
@@ -32,7 +33,8 @@ data class EncodingConfig(
     val audioFormat: String = "DEFAULT",            // "DEFAULT" or specific Audio MIME type
     val audioBitrateBps: Int = 0,                   // 0 = Auto Audio Bitrate
     val isAudioMuted: Boolean = false,               // Remove audio
-    val rotationDegrees: Float = 0.0f                // 0, 90, 180, 270
+    val rotationDegrees: Float = 0.0f,               // 0, 90, 180, 270
+    val quantizationParameterQP: Int = 23           // 1 to 51
 )
 
 class VideoEncodingEngine(private val context: Context) {
@@ -53,10 +55,16 @@ class VideoEncodingEngine(private val context: Context) {
 
         val customEncoderFactory = DefaultEncoderFactory.Builder(context)
             .setRequestedVideoEncoderSettings(videoEncoderSettings)
+            .setEnableFallback(true)
+            .build()
+
+        val customDecoderFactory = DefaultDecoderFactory.Builder(context)
+            .setFallbackToSoftwareDecoder(true)
             .build()
 
         val builder = Transformer.Builder(context)
             .setEncoderFactory(customEncoderFactory)
+            .setDecoderFactory(customDecoderFactory)
             .addListener(object : Transformer.Listener {
                 override fun onCompleted(composition: Composition, exportResult: ExportResult) {
                     onCompleted()
