@@ -1393,54 +1393,57 @@ fun UnifiedMediaListSection(
     onPlay: (EncodedFileItem) -> Unit,
     onShare: (EncodedFileItem) -> Unit
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+    if (uiState.encodedHistory.isEmpty() && !uiState.isEncoding) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 120.dp, horizontal = 24.dp),
+            contentAlignment = Alignment.Center
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.FolderZip, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Daftar File & Proses Media", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold))
-            }
-
-            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer) {
-                val totalCount = uiState.encodedHistory.size + (if (uiState.isEncoding) 1 else 0)
-                Text(
-                    text = "$totalCount File",
-                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                )
-            }
-        }
-
-        // 1. Render Active Encoding Item Card with Circular Wavy Progress Bar
-        if (uiState.isEncoding) {
-            ActiveEncodingCardItem(
-                fileName = uiState.activeEncodingFileName ?: "Berkas Media",
-                progressPercent = uiState.encodingProgress,
-                statusText = uiState.encodingStatusText,
-                mediaType = uiState.selectedMedia?.mediaType ?: MediaType.VIDEO,
-                onCancel = onCancelEncoding
+            Text(
+                text = "Untuk memulai, pilih file dengan klik tombol +",
+                style = MaterialTheme.typography.bodyLarge.copy(
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                ),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
             )
         }
-
-        // 2. Render Completed History Items
-        if (uiState.encodedHistory.isEmpty() && !uiState.isEncoding) {
-            M3ExpressiveCard(
+    } else {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp)
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.FolderZip, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Daftar File & Proses Media", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold))
+                }
+
+                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer) {
+                    val totalCount = uiState.encodedHistory.size + (if (uiState.isEncoding) 1 else 0)
                     Text(
-                        text = "Belum ada file media yang dikompresi.\nTekan tombol FAB di kanan bawah untuk mengodekan berkas.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        text = "$totalCount File",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                     )
                 }
             }
-        } else {
+
+            // 1. Render Active Encoding Item Card with Circular Wavy Progress Bar
+            if (uiState.isEncoding) {
+                ActiveEncodingCardItem(
+                    fileName = uiState.activeEncodingFileName ?: "Berkas Media",
+                    progressPercent = uiState.encodingProgress,
+                    statusText = uiState.encodingStatusText,
+                    mediaType = uiState.selectedMedia?.mediaType ?: MediaType.VIDEO,
+                    onCancel = onCancelEncoding
+                )
+            }
+
+            // 2. Render Completed History Items
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 uiState.encodedHistory.forEach { item ->
                     EncodedHistoryCardItem(
