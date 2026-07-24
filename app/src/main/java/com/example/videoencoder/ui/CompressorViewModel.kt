@@ -351,9 +351,23 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
             val context = getApplication<Application>().applicationContext
             val directoriesToScan = mutableListOf<File>()
             
-            val externalPublicDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
-            if (externalPublicDir != null && externalPublicDir.exists()) {
-                directoriesToScan.add(externalPublicDir)
+            val externalPublicMovies = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
+            if (externalPublicMovies != null) {
+                val mediaEncoderMoviesFolder = File(externalPublicMovies, "Media Encoder")
+                if (mediaEncoderMoviesFolder.exists()) directoriesToScan.add(mediaEncoderMoviesFolder)
+                if (externalPublicMovies.exists()) directoriesToScan.add(externalPublicMovies)
+            }
+
+            val externalPublicPictures = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
+            if (externalPublicPictures != null) {
+                val mediaEncoderPicturesFolder = File(externalPublicPictures, "Media Encoder")
+                if (mediaEncoderPicturesFolder.exists()) directoriesToScan.add(mediaEncoderPicturesFolder)
+            }
+
+            val externalPublicMusic = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC)
+            if (externalPublicMusic != null) {
+                val mediaEncoderMusicFolder = File(externalPublicMusic, "Media Encoder")
+                if (mediaEncoderMusicFolder.exists()) directoriesToScan.add(mediaEncoderMusicFolder)
             }
 
             context.getExternalFilesDir(Environment.DIRECTORY_MOVIES)?.let {
