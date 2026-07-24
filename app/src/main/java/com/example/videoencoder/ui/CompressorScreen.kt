@@ -8,6 +8,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -82,7 +83,6 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
@@ -137,7 +137,7 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
-// Native Material 3 Expressive Component System with Dynamic Shape Morphing & Spring Physics!
+// Official Material Design 3 Expressive System Guidelines Implementation
 
 @Composable
 fun M3ExpressiveButton(
@@ -286,15 +286,75 @@ fun M3ExpressiveIconButton(
     )
 }
 
+/**
+ * Official Material Design 3 Expressive FAB Menu Items
+ * Full pill shape with spring press scale physics & shape morphing
+ */
+@Composable
+fun M3ExpressiveFabMenuItem(
+    onClick: () -> Unit,
+    icon: @Composable () -> Unit,
+    label: String,
+    modifier: Modifier = Modifier,
+    containerColor: Color = MaterialTheme.colorScheme.primaryContainer,
+    contentColor: Color = MaterialTheme.colorScheme.onPrimaryContainer
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    val animatedScale by animateFloatAsState(
+        targetValue = if (isPressed) 0.94f else 1.0f,
+        animationSpec = spring(
+            stiffness = Spring.StiffnessMediumLow,
+            dampingRatio = Spring.DampingRatioMediumBouncy
+        ),
+        label = "fab_item_scale"
+    )
+
+    val currentShape = if (isPressed) RoundedCornerShape(16.dp) else CircleShape
+
+    Surface(
+        onClick = onClick,
+        modifier = modifier.graphicsLayer {
+            scaleX = animatedScale
+            scaleY = animatedScale
+        },
+        shape = currentShape,
+        color = containerColor,
+        contentColor = contentColor,
+        shadowElevation = 4.dp,
+        interactionSource = interactionSource
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 22.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            icon()
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge.copy(
+                    fontWeight = FontWeight.Bold
+                )
+            )
+        }
+    }
+}
+
+/**
+ * Official Material Design 3 Expressive FAB Button with Contrasting Close Button Transformation
+ */
 @Composable
 fun M3ExpressiveLargeFAB(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    isExpanded: Boolean = false,
     shape: Shape = CircleShape,
     pressedShape: Shape = RoundedCornerShape(18.dp),
-    containerColor: Color = MaterialTheme.colorScheme.secondaryContainer,
-    contentColor: Color = MaterialTheme.colorScheme.onSecondaryContainer,
-    content: @Composable () -> Unit
+    collapsedContainerColor: Color = MaterialTheme.colorScheme.primaryContainer,
+    collapsedContentColor: Color = MaterialTheme.colorScheme.onPrimaryContainer,
+    expandedContainerColor: Color = MaterialTheme.colorScheme.tertiary,
+    expandedContentColor: Color = MaterialTheme.colorScheme.onTertiary
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
@@ -308,6 +368,18 @@ fun M3ExpressiveLargeFAB(
         label = "expressive_fab_scale"
     )
 
+    val currentContainerColor by animateColorAsState(
+        targetValue = if (isExpanded) expandedContainerColor else collapsedContainerColor,
+        animationSpec = tween(durationMillis = 200),
+        label = "fab_container_color"
+    )
+
+    val currentContentColor by animateColorAsState(
+        targetValue = if (isExpanded) expandedContentColor else collapsedContentColor,
+        animationSpec = tween(durationMillis = 200),
+        label = "fab_content_color"
+    )
+
     val currentShape = if (isPressed) pressedShape else shape
 
     LargeFloatingActionButton(
@@ -317,11 +389,26 @@ fun M3ExpressiveLargeFAB(
             scaleY = animatedScale
         },
         shape = currentShape,
-        containerColor = containerColor,
-        contentColor = contentColor,
-        interactionSource = interactionSource,
-        content = content
-    )
+        containerColor = currentContainerColor,
+        contentColor = currentContentColor,
+        interactionSource = interactionSource
+    ) {
+        AnimatedContent(
+            targetState = isExpanded,
+            transitionSpec = {
+                (fadeIn(tween(150)) + scaleIn(initialScale = 0.7f)).togetherWith(
+                    fadeOut(tween(100)) + scaleOut(targetScale = 0.7f)
+                )
+            },
+            label = "fab_icon_crossfade"
+        ) { expanded ->
+            if (expanded) {
+                Icon(Icons.Default.Close, contentDescription = "Tutup Menu", modifier = Modifier.size(32.dp))
+            } else {
+                Icon(Icons.Default.Add, contentDescription = "Tambah Media", modifier = Modifier.size(36.dp))
+            }
+        }
+    }
 }
 
 @Composable
@@ -454,13 +541,6 @@ fun MainScreenView(
 ) {
     val context = LocalContext.current
     var isFabMenuExpanded by remember { mutableStateOf(false) }
-
-    // Native M3 Spring Rotation Animation for FAB Icon (0 -> 135 deg)
-    val fabIconRotation by animateFloatAsState(
-        targetValue = if (isFabMenuExpanded) 135f else 0f,
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-        label = "fab_icon_rotation"
-    )
 
     BackHandler(enabled = isFabMenuExpanded) {
         isFabMenuExpanded = false
@@ -676,7 +756,7 @@ fun MainScreenView(
             )
         }
 
-        // 3. Native M3 Speed Dial FAB Menu Overlay with Dynamic System Navigation Bar Safety!
+        // 3. Official Material Design 3 Expressive FAB Menu Implementation
         val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
         val fabBottomPadding = if (navBarBottom > 0.dp) navBarBottom + 20.dp else 36.dp
 
@@ -688,77 +768,58 @@ fun MainScreenView(
         ) {
             Column(
                 horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 AnimatedVisibility(
                     visible = isFabMenuExpanded,
-                    enter = fadeIn(tween(150)) + slideInVertically(initialOffsetY = { it / 3 }, animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) + scaleIn(initialScale = 0.8f),
-                    exit = fadeOut(tween(100)) + slideOutVertically(targetOffsetY = { it / 3 }) + scaleOut(targetScale = 0.8f)
+                    enter = fadeIn(tween(180)) + slideInVertically(initialOffsetY = { it / 2 }, animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioMediumBouncy)) + scaleIn(initialScale = 0.75f),
+                    exit = fadeOut(tween(120)) + slideOutVertically(targetOffsetY = { it / 2 }) + scaleOut(targetScale = 0.75f)
                 ) {
                     Column(
                         horizontalAlignment = Alignment.End,
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        // 1. Video SAF
-                        ExtendedFloatingActionButton(
+                        // 1. Video SAF Item
+                        M3ExpressiveFabMenuItem(
                             onClick = {
                                 isFabMenuExpanded = false
                                 videoPickerLauncher.launch(arrayOf("video/*", "application/octet-stream", "video/x-msvideo", "video/x-ms-wmv", "video/x-matroska", "video/avi", "*/*"))
                             },
-                            icon = { Icon(Icons.Default.Movie, contentDescription = null) },
-                            text = { Text("Video", fontWeight = FontWeight.Bold) },
-                            containerColor = MaterialTheme.colorScheme.primaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                            shape = RoundedCornerShape(20.dp),
-                            elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)
+                            icon = { Icon(Icons.Default.Movie, contentDescription = null, modifier = Modifier.size(24.dp)) },
+                            label = "Video"
                         )
 
-                        // 2. Gambar SAF
-                        ExtendedFloatingActionButton(
+                        // 2. Gambar SAF Item
+                        M3ExpressiveFabMenuItem(
                             onClick = {
                                 isFabMenuExpanded = false
                                 imagePickerLauncher.launch(arrayOf("image/*"))
                             },
-                            icon = { Icon(Icons.Default.Image, contentDescription = null) },
-                            text = { Text("Gambar", fontWeight = FontWeight.Bold) },
-                            containerColor = MaterialTheme.colorScheme.primaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                            shape = RoundedCornerShape(20.dp),
-                            elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)
+                            icon = { Icon(Icons.Default.Image, contentDescription = null, modifier = Modifier.size(24.dp)) },
+                            label = "Gambar"
                         )
 
-                        // 3. Audio SAF
-                        ExtendedFloatingActionButton(
+                        // 3. Audio SAF Item
+                        M3ExpressiveFabMenuItem(
                             onClick = {
                                 isFabMenuExpanded = false
                                 audioPickerLauncher.launch(arrayOf("audio/*"))
                             },
-                            icon = { Icon(Icons.Default.Audiotrack, contentDescription = null) },
-                            text = { Text("Audio", fontWeight = FontWeight.Bold) },
-                            containerColor = MaterialTheme.colorScheme.primaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                            shape = RoundedCornerShape(20.dp),
-                            elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)
+                            icon = { Icon(Icons.Default.Audiotrack, contentDescription = null, modifier = Modifier.size(24.dp)) },
+                            label = "Audio"
                         )
                     }
                 }
 
-                // Main Large FAB Button with Native M3 Shape Morphing & Bouncy Spring Physics!
+                // Official M3 Expressive Main Toggle FAB with Contrasting Close Button Transformation
                 M3ExpressiveLargeFAB(
                     onClick = { isFabMenuExpanded = !isFabMenuExpanded },
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = "Menu Input Media",
-                        modifier = Modifier
-                            .size(36.dp)
-                            .graphicsLayer {
-                                rotationZ = fabIconRotation
-                            }
-                    )
-                }
+                    isExpanded = isFabMenuExpanded,
+                    collapsedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                    collapsedContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    expandedContainerColor = MaterialTheme.colorScheme.tertiary,
+                    expandedContentColor = MaterialTheme.colorScheme.onTertiary
+                )
             }
         }
     }
