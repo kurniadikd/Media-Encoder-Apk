@@ -10,6 +10,7 @@ import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Environment
 import android.os.IBinder
+import android.provider.OpenableColumns
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MimeTypes
@@ -268,7 +269,7 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                 dir.listFiles()
                     ?.filter { file ->
                         file.isFile && (
-                            file.name.endsWith(".mp4") || file.name.endsWith(".mkv") || file.name.endsWith(".webm") ||
+                            file.name.endsWith(".mp4") || file.name.endsWith(".mkv") || file.name.endsWith(".webm") || file.name.endsWith(".avi") || file.name.endsWith(".wmv") ||
                             file.name.endsWith(".jpg") || file.name.endsWith(".jpeg") || file.name.endsWith(".png") || file.name.endsWith(".webp") ||
                             file.name.endsWith(".m4a") || file.name.endsWith(".aac") || file.name.endsWith(".opus") || file.name.endsWith(".mp3")
                         )
@@ -331,100 +332,130 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
     fun onMediaSelected(uri: Uri, mediaType: MediaType) {
         viewModelScope.launch {
             val context = getApplication<Application>().applicationContext
-            var fileName = uri.lastPathSegment ?: "Selected Media"
+            var fileName = "Selected Media"
             var fileSize = 0L
 
+            // Try to extract display name and size from ContentResolver query
             try {
-                context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { afd ->
-                    fileSize = afd.length
+                context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                        val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
+                        if (nameIndex != -1) cursor.getString(nameIndex)?.let { fileName = it }
+                        if (sizeIndex != -1) fileSize = cursor.getLong(sizeIndex)
+                    }
                 }
             } catch (_: Exception) {}
 
+            if (fileName == "Selected Media") {
+                fileName = uri.lastPathSegment ?: "Media_Item"
+            }
+
+            if (fileSize == 0L) {
+                try {
+                    context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { afd ->
+                        fileSize = afd.length
+                    }
+                } catch (_: Exception) {}
+            }
+
             when (mediaType) {
                 MediaType.VIDEO -> {
+                    var durationSec = 0L
+                    var width = 1920
+                    var height = 1080
+
                     val retriever = MediaMetadataRetriever()
                     try {
                         retriever.setDataSource(context, uri)
                         val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
-                        val width = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 1920
-                        val height = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 1080
-
-                        val metadata = SelectedMediaItem(
-                            uri = uri,
-                            mediaType = MediaType.VIDEO,
-                            fileName = fileName,
-                            sizeBytes = fileSize,
-                            durationSec = durationMs / 1000,
-                            width = width,
-                            height = height
-                        )
-                        _uiState.update { current ->
-                            val updated = current.copy(
-                                currentScreen = AppScreen.PREPROCESS,
-                                selectedMedia = metadata,
-                                completedOutputPath = null,
-                                errorMessage = null
-                            )
-                            updated.copy(estimatedSizeMb = calculateEstimatedSize(updated))
-                        }
-                    } catch (e: Exception) {
-                        _uiState.update { it.copy(errorMessage = "Gagal membaca metadata video: ${e.localizedMessage}") }
+                        val w = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 0
+                        val h = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 0
+                        if (durationMs > 0) durationSec = durationMs / 1000
+                        if (w > 0) width = w
+                        if (h > 0) height = h
+                    } catch (_: Exception) {
+                        // Fallback gracefully for video formats where system MediaMetadataRetriever fails (e.g. AVI, WMV, FLV)
                     } finally {
                         try { retriever.release() } catch (_: Exception) {}
                     }
+
+                    val metadata = SelectedMediaItem(
+                        uri = uri,
+                        mediaType = MediaType.VIDEO,
+                        fileName = fileName,
+                        sizeBytes = fileSize,
+                        durationSec = durationSec,
+                        width = width,
+                        height = height
+                    )
+                    _uiState.update { current ->
+                        val updated = current.copy(
+                            currentScreen = AppScreen.PREPROCESS,
+                            selectedMedia = metadata,
+                            completedOutputPath = null,
+                            errorMessage = null
+                        )
+                        updated.copy(estimatedSizeMb = calculateEstimatedSize(updated))
+                    }
                 }
                 MediaType.IMAGE -> {
+                    var imgWidth = 0
+                    var imgHeight = 0
                     try {
                         val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                         context.contentResolver.openInputStream(uri)?.use { stream ->
                             BitmapFactory.decodeStream(stream, null, options)
                         }
-                        val metadata = SelectedMediaItem(
-                            uri = uri,
-                            mediaType = MediaType.IMAGE,
-                            fileName = fileName,
-                            sizeBytes = fileSize,
-                            width = options.outWidth,
-                            height = options.outHeight
+                        imgWidth = options.outWidth
+                        imgHeight = options.outHeight
+                    } catch (_: Exception) {}
+
+                    val metadata = SelectedMediaItem(
+                        uri = uri,
+                        mediaType = MediaType.IMAGE,
+                        fileName = fileName,
+                        sizeBytes = fileSize,
+                        width = imgWidth,
+                        height = imgHeight
+                    )
+                    _uiState.update { current ->
+                        val updated = current.copy(
+                            currentScreen = AppScreen.PREPROCESS,
+                            selectedMedia = metadata,
+                            completedOutputPath = null,
+                            errorMessage = null
                         )
-                        _uiState.update { current ->
-                            val updated = current.copy(
-                                currentScreen = AppScreen.PREPROCESS,
-                                selectedMedia = metadata,
-                                completedOutputPath = null,
-                                errorMessage = null
-                            )
-                            updated.copy(estimatedSizeMb = calculateEstimatedSize(updated))
-                        }
-                    } catch (e: Exception) {
-                        _uiState.update { it.copy(errorMessage = "Gagal membaca metadata gambar: ${e.localizedMessage}") }
+                        updated.copy(estimatedSizeMb = calculateEstimatedSize(updated))
                     }
                 }
                 MediaType.AUDIO -> {
+                    var durationSec = 0L
                     val retriever = MediaMetadataRetriever()
                     try {
                         retriever.setDataSource(context, uri)
                         val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
-                        val metadata = SelectedMediaItem(
-                            uri = uri,
-                            mediaType = MediaType.AUDIO,
-                            fileName = fileName,
-                            sizeBytes = fileSize,
-                            durationSec = durationMs / 1000
-                        )
-                        _uiState.update { current ->
-                            val updated = current.copy(
-                                currentScreen = AppScreen.PREPROCESS,
-                                selectedMedia = metadata,
-                                completedOutputPath = null,
-                                errorMessage = null
-                            )
-                            updated.copy(estimatedSizeMb = calculateEstimatedSize(updated))
-                        }
-                    } catch (e: Exception) {
-                        _uiState.update { it.copy(errorMessage = "Gagal membaca metadata audio: ${e.localizedMessage}") }
+                        if (durationMs > 0) durationSec = durationMs / 1000
+                    } catch (_: Exception) {
                     } finally {
                         try { retriever.release() } catch (_: Exception) {}
+                    }
+
+                    val metadata = SelectedMediaItem(
+                        uri = uri,
+                        mediaType = MediaType.AUDIO,
+                        fileName = fileName,
+                        sizeBytes = fileSize,
+                        durationSec = durationSec
+                    )
+                    _uiState.update { current ->
+                        val updated = current.copy(
+                            currentScreen = AppScreen.PREPROCESS,
+                            selectedMedia = metadata,
+                            completedOutputPath = null,
+                            errorMessage = null
+                        )
+                        updated.copy(estimatedSizeMb = calculateEstimatedSize(updated))
                     }
                 }
             }

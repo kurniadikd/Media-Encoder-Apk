@@ -340,11 +340,11 @@ fun MainScreenView(
                         horizontalAlignment = Alignment.End,
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        // 1. Video SAF
+                        // 1. Video SAF (Supports MP4, AVI, WMV, MKV, FLV, MOV, TS, WebM, 3GP, etc.)
                         ExtendedFloatingActionButton(
                             onClick = {
                                 isFabMenuExpanded = false
-                                videoPickerLauncher.launch(arrayOf("video/*"))
+                                videoPickerLauncher.launch(arrayOf("video/*", "application/octet-stream", "video/x-msvideo", "video/x-ms-wmv", "video/x-matroska", "video/avi", "*/*"))
                             },
                             icon = { Icon(Icons.Default.Movie, contentDescription = null) },
                             text = { Text("Video", fontWeight = FontWeight.Bold) },
