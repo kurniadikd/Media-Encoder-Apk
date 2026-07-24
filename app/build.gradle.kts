@@ -61,10 +61,11 @@ dependencies {
     implementation(libs.androidx.material3)
     implementation(libs.androidx.material.icons.extended)
 
-    // Media3 Transformer & Effects
+    // Media3 Transformer, Effects & Universal Extractors (WMV, AVI, MKV, MP4, FLV, MOV, TS)
     implementation(libs.androidx.media3.transformer)
     implementation(libs.androidx.media3.effect)
     implementation(libs.androidx.media3.common)
+    implementation(libs.androidx.media3.extractor)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
