@@ -8,8 +8,6 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.effect.Presentation
 import androidx.media3.effect.ScaleAndRotateTransformation
-import androidx.media3.transformer.Composition
-import androidx.media3.transformer.DefaultDecoderFactory
 import androidx.media3.transformer.DefaultEncoderFactory
 import androidx.media3.transformer.EditedMediaItem
 import androidx.media3.transformer.Effects
@@ -58,13 +56,8 @@ class VideoEncodingEngine(private val context: Context) {
             .setEnableFallback(true)
             .build()
 
-        val customDecoderFactory = DefaultDecoderFactory.Builder(context)
-            .setFallbackToSoftwareDecoder(true)
-            .build()
-
         val builder = Transformer.Builder(context)
             .setEncoderFactory(customEncoderFactory)
-            .setDecoderFactory(customDecoderFactory)
             .addListener(object : Transformer.Listener {
                 override fun onCompleted(composition: Composition, exportResult: ExportResult) {
                     onCompleted()
