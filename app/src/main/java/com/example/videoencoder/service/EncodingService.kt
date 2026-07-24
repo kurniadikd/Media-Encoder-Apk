@@ -122,64 +122,68 @@ class EncodingService : Service() {
 
         _progressState.value = ServiceProgressState(status = EncodingStatus.RUNNING, progressPercent = 0)
 
-        val engine = VideoEncodingEngine(applicationContext)
-        val editedItem = engine.createEditedMediaItem(inputUri, config)
+        scope.launch(Dispatchers.IO) {
+            val engine = VideoEncodingEngine(applicationContext)
+            val editedItem = engine.createEditedMediaItem(inputUri, config)
 
-        val transformer = engine.buildTransformer(
-            config = config,
-            onCompleted = {
-                progressJob?.cancel()
-                _progressState.value = ServiceProgressState(
-                    status = EncodingStatus.COMPLETED,
-                    progressPercent = 100,
-                    outputPath = outputPath
-                )
-                try {
-                    android.media.MediaScannerConnection.scanFile(
-                        applicationContext,
-                        arrayOf(outputPath),
-                        null,
-                        null
-                    )
-                } catch (_: Exception) {}
-                updateNotification(100, "Pengodean Selesai! 🎉", isFinished = true)
-                stopSelfWithDelay()
-            },
-            onError = { exception ->
-                progressJob?.cancel()
-                _progressState.value = ServiceProgressState(
-                    status = EncodingStatus.ERROR,
-                    errorMessage = exception.localizedMessage ?: "Hardware encoding error"
-                )
-                updateNotification(0, "Pengodean Gagal: ${exception.localizedMessage}", isFinished = true)
-                stopSelfWithDelay()
-            }
-        )
-
-        activeTransformer = transformer
-        transformer.start(editedItem, outputPath)
-
-        val progressHolder = ProgressHolder()
-        progressJob?.cancel()
-        progressJob = scope.launch {
-            var simulatedProgress = 5
-            while (true) {
-                delay(300)
-                activeTransformer?.let { trans ->
-                    val state = trans.getProgress(progressHolder)
-                    val currentProgress = if (state == Transformer.PROGRESS_STATE_AVAILABLE) {
-                        progressHolder.progress
-                    } else {
-                        if (simulatedProgress < 95) {
-                            simulatedProgress += 1
-                        }
-                        simulatedProgress
+            withContext(Dispatchers.Main) {
+                val transformer = engine.buildTransformer(
+                    config = config,
+                    onCompleted = {
+                        progressJob?.cancel()
+                        _progressState.value = ServiceProgressState(
+                            status = EncodingStatus.COMPLETED,
+                            progressPercent = 100,
+                            outputPath = outputPath
+                        )
+                        try {
+                            android.media.MediaScannerConnection.scanFile(
+                                applicationContext,
+                                arrayOf(outputPath),
+                                null,
+                                null
+                            )
+                        } catch (_: Exception) {}
+                        updateNotification(100, "Pengodean Selesai! 🎉", isFinished = true)
+                        stopSelfWithDelay()
+                    },
+                    onError = { exception ->
+                        progressJob?.cancel()
+                        _progressState.value = ServiceProgressState(
+                            status = EncodingStatus.ERROR,
+                            errorMessage = exception.localizedMessage ?: "Hardware encoding error"
+                        )
+                        updateNotification(0, "Pengodean Gagal: ${exception.localizedMessage}", isFinished = true)
+                        stopSelfWithDelay()
                     }
-                    _progressState.value = _progressState.value.copy(
-                        status = EncodingStatus.RUNNING,
-                        progressPercent = currentProgress
-                    )
-                    updateNotification(currentProgress, "Proses Pengodean: $currentProgress%", isFinished = false)
+                )
+
+                activeTransformer = transformer
+                transformer.start(editedItem, outputPath)
+
+                val progressHolder = ProgressHolder()
+                progressJob?.cancel()
+                progressJob = scope.launch {
+                    var simulatedProgress = 5
+                    while (true) {
+                        delay(300)
+                        activeTransformer?.let { trans ->
+                            val state = trans.getProgress(progressHolder)
+                            val currentProgress = if (state == Transformer.PROGRESS_STATE_AVAILABLE) {
+                                progressHolder.progress
+                            } else {
+                                if (simulatedProgress < 95) {
+                                    simulatedProgress += 1
+                                }
+                                simulatedProgress
+                            }
+                            _progressState.value = _progressState.value.copy(
+                                status = EncodingStatus.RUNNING,
+                                progressPercent = currentProgress
+                            )
+                            updateNotification(currentProgress, "Proses Pengodean: $currentProgress%", isFinished = false)
+                        }
+                    }
                 }
             }
         }

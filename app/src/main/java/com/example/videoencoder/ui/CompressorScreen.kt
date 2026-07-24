@@ -992,21 +992,24 @@ fun M3ExpressiveCircularWavyProgressIndicator(
             style = Stroke(width = strokeWidth)
         )
 
-        // 2. Draw active wavy progress arc
+        // 2. Draw active wavy progress arc with 100% CONSISTENT wave frequency along arc length
         val clampedProgress = progress.coerceIn(0.02f, 1.0f)
         val sweepAngle = 360f * clampedProgress
-        val numPoints = 80
+        val numPoints = (sweepAngle * 0.8f).toInt().coerceAtLeast(20)
 
         val waveAmplitude = 1.8.dp.toPx()
-        val waveFrequency = 6f
+        // Exactly 8 wave cycles per 360 degrees (1 cycle every 45 degrees of arc!)
+        val cyclesPerDegree = 8.0 / 360.0
 
         val wavePath = Path()
         for (i in 0..numPoints) {
             val fraction = i.toFloat() / numPoints
-            val currentAngleDegrees = -90f + fraction * sweepAngle
+            val angleDegrees = fraction * sweepAngle
+            val currentAngleDegrees = -90f + angleDegrees
             val currentAngleRads = Math.toRadians(currentAngleDegrees.toDouble())
 
-            val waveOffset = waveAmplitude * sin(fraction * waveFrequency * 2 * PI + wavePhase)
+            // Absolute angle calculation ensures constant wavelength everywhere along the arc!
+            val waveOffset = waveAmplitude * sin(angleDegrees * cyclesPerDegree * 2 * PI + wavePhase)
             val currentRadius = radius + waveOffset
 
             val x = (center.x + currentRadius * cos(currentAngleRads)).toFloat()
