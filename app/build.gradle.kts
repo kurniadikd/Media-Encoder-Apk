@@ -12,8 +12,12 @@ android {
         applicationId = "com.example.videoencoder"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+
+        val autoVersionCode = project.findProperty("versionCode")?.toString()?.toIntOrNull() ?: 1
+        val autoVersionName = project.findProperty("versionName")?.toString() ?: "1.0.0"
+
+        versionCode = autoVersionCode
+        versionName = autoVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

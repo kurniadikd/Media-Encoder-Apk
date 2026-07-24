@@ -29,32 +29,39 @@ jobs:
       - name: Make Gradlew Executable
         run: chmod +x gradlew
 
+      - name: Set Automatic Version Variables
+        id: versioning
+        run: |
+          VERSION_NAME="1.0.${{ github.run_number }}"
+          echo "VERSION_NAME=$VERSION_NAME" >> $GITHUB_OUTPUT
+          echo "VERSION_CODE=${{ github.run_number }}" >> $GITHUB_OUTPUT
+
       - name: Build Release APK
-        run: ./gradlew assembleRelease --no-daemon
+        run: ./gradlew assembleRelease -PversionCode=${{ steps.versioning.outputs.VERSION_CODE }} -PversionName="${{ steps.versioning.outputs.VERSION_NAME }}" --no-daemon
 
       - name: Prepare APK File
-        run: cp app/build/outputs/apk/release/app-release.apk Media-Encoder-v1.0.0.apk
+        run: cp app/build/outputs/apk/release/app-release.apk "Media-Encoder-${{ steps.versioning.outputs.VERSION_NAME }}.apk"
 
       - name: Upload Workflow Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Media-Encoder-v1.0.0.apk
-          path: Media-Encoder-v1.0.0.apk
+          name: "Media-Encoder-${{ steps.versioning.outputs.VERSION_NAME }}.apk"
+          path: "Media-Encoder-${{ steps.versioning.outputs.VERSION_NAME }}.apk"
 
       - name: Publish to GitHub Releases
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.0
-          name: "Media Encoder v1.0.0"
+          tag_name: "v${{ steps.versioning.outputs.VERSION_NAME }}"
+          name: "Media Encoder v${{ steps.versioning.outputs.VERSION_NAME }}"
           body: |
-            🚀 **Official Release Build of Media Encoder App**
+            🚀 **Official Release Build of Media Encoder App (v${{ steps.versioning.outputs.VERSION_NAME }})**
             
             - 🎥 **Video Codec Encoders**: HEVC (H.265), AVC (H.264), VP9, AV1, VP8, MPEG-4, H.263 via Hardware MediaCodec.
             - 🖼️ **Image Encoder**: WEBP, JPEG, PNG with quality & resizing controls.
             - 🎵 **Audio Encoder**: AAC, Opus, AMR-WB.
             - 📂 **Storage Destination**: External Public Movies & Internal App Storage.
             - 📱 **Native File Manager Integration**: Open With & Share support.
-          files: Media-Encoder-v1.0.0.apk
+          files: "Media-Encoder-${{ steps.versioning.outputs.VERSION_NAME }}.apk"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
