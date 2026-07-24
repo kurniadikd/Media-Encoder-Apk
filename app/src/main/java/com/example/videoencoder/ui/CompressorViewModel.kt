@@ -722,7 +722,9 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
             context.filesDir
         }
 
+        val paramLog = "Config: Codec=${state.outputFormat}, Res=${state.resolutionPreset.label}, Bitrate=${if (state.useAutoBitrate) "Auto" else "${state.targetBitrateMbps}Mbps"}, FPS=${if (state.frameRate == 0) "Original" else "${state.frameRate}fps"}, Audio=${if (state.isAudioMuted) "Muted" else state.audioFormat}"
         addLog("Memulai pengodean untuk berkas: ${media.fileName}", LogLevel.INFO, "ENCODER")
+        addLog(paramLog, LogLevel.INFO, "ENCODER_CONFIG")
         encodingStartTimeMs = System.currentTimeMillis()
 
         val initialSizeText = String.format(Locale.US, "0.0 MB / %.1f MB", state.estimatedSizeMb)

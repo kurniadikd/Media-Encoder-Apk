@@ -181,11 +181,16 @@ class EncodingService : Service() {
                     },
                     onError = { exception ->
                         progressJob?.cancel()
+                        val errorCodeName = exception.errorCodeName
+                        val errorCode = exception.errorCode
+                        val causeMsg = exception.cause?.message ?: exception.localizedMessage ?: "Hardware Muxer Error"
+                        val detailedLogText = "Pengodean Gagal [$errorCodeName ($errorCode)]: $causeMsg"
+
                         _progressState.value = ServiceProgressState(
                             status = EncodingStatus.ERROR,
-                            errorMessage = exception.localizedMessage ?: "Hardware encoding error"
+                            errorMessage = detailedLogText
                         )
-                        updateNotification(0, "Pengodean Gagal: ${exception.localizedMessage}", isFinished = true)
+                        updateNotification(0, "Gagal: $errorCodeName", isFinished = true)
                         stopSelfWithDelay()
                     }
                 )

@@ -53,8 +53,11 @@ class VideoEncodingEngine(private val context: Context) {
             .setRequestedVideoEncoderSettings(videoEncoderSettings)
             .build()
 
+        val muxerFactory = androidx.media3.transformer.DefaultMuxer.Factory()
+
         val builder = Transformer.Builder(context)
             .setEncoderFactory(customEncoderFactory)
+            .setMuxerFactory(muxerFactory)
             .addListener(object : Transformer.Listener {
                 override fun onCompleted(composition: Composition, exportResult: ExportResult) {
                     onCompleted()
