@@ -24,7 +24,12 @@ jobs:
         with:
           java-version: '21'
           distribution: 'temurin'
-          cache: 'gradle'
+
+      - name: Setup & Acceleration via Gradle Action
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: wrapper
+          cache-disabled: false
 
       - name: Make Gradlew Executable
         run: chmod +x gradlew
@@ -36,8 +41,8 @@ jobs:
           echo "VERSION_NAME=$VERSION_NAME" >> $GITHUB_OUTPUT
           echo "VERSION_CODE=${{ github.run_number }}" >> $GITHUB_OUTPUT
 
-      - name: Build Release APK
-        run: ./gradlew assembleRelease -PversionCode=${{ steps.versioning.outputs.VERSION_CODE }} -PversionName="${{ steps.versioning.outputs.VERSION_NAME }}" --no-daemon
+      - name: Build Release APK (Parallel Accelerated)
+        run: ./gradlew assembleRelease -PversionCode=${{ steps.versioning.outputs.VERSION_CODE }} -PversionName="${{ steps.versioning.outputs.VERSION_NAME }}" --build-cache --parallel
 
       - name: Prepare APK File
         run: cp app/build/outputs/apk/release/app-release.apk "Media-Encoder-${{ steps.versioning.outputs.VERSION_NAME }}.apk"
@@ -62,6 +67,7 @@ jobs:
             - 🎵 **Audio Encoder**: AAC, Opus, AMR-WB.
             - 📂 **Storage Destination**: External Public Movies & Internal App Storage.
             - 📱 **Native File Manager Integration**: Open With & Share support.
+            - 📜 **Real-time System Logs**: Monospace Log Viewer & Copy to Clipboard.
           files: "Media-Encoder-${{ steps.versioning.outputs.VERSION_NAME }}.apk"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
