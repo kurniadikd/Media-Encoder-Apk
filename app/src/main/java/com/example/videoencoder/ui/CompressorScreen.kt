@@ -121,7 +121,7 @@ fun CompressorScreen(
         viewModel.clearSelectedVideo()
     }
 
-    // Launchers for Video, Image, and Audio
+    // Launchers for Video, Image, Audio, and Universal File Manager (SAF)
     val videoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri ->
@@ -138,6 +138,20 @@ fun CompressorScreen(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
         uri?.let { viewModel.onMediaSelected(it, MediaType.AUDIO) }
+    }
+
+    val universalDocumentPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        uri?.let {
+            val mime = context.contentResolver.getType(it) ?: ""
+            val mediaType = when {
+                mime.startsWith("image/") -> MediaType.IMAGE
+                mime.startsWith("audio/") -> MediaType.AUDIO
+                else -> MediaType.VIDEO
+            }
+            viewModel.onMediaSelected(it, mediaType)
+        }
     }
 
     Scaffold(
@@ -469,6 +483,29 @@ fun CompressorScreen(
                             Column {
                                 Text("🎵 Berkas Audio", fontWeight = FontWeight.Bold)
                                 Text("Encode Audio AAC, Opus, AMR-WB", style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+
+                    // Native Universal File Manager (SAF)
+                    Card(
+                        onClick = {
+                            showMediaPickerSheet = false
+                            universalDocumentPickerLauncher.launch(arrayOf("video/*", "image/*", "audio/*", "*/*"))
+                        },
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Column {
+                                Text("📂 File Manager / Penjelajah Berkas Native", fontWeight = FontWeight.Bold)
+                                Text("Buka berkas dari Aplikasi File Manager, SD Card, atau Drive HP", style = MaterialTheme.typography.bodySmall)
                             }
                         }
                     }
