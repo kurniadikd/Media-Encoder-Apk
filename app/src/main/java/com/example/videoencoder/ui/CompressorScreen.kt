@@ -4,13 +4,14 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -37,6 +38,7 @@ import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
@@ -65,12 +67,13 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -83,7 +86,6 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -114,44 +116,34 @@ fun CompressorScreen(
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     var isAdvancedExpanded by remember { mutableStateOf(false) }
-    var showMediaPickerSheet by remember { mutableStateOf(false) }
+    var isFabMenuExpanded by remember { mutableStateOf(false) }
 
-    // Intercept native Back button when media is selected
-    BackHandler(enabled = uiState.selectedMedia != null && !uiState.isEncoding) {
-        viewModel.clearSelectedVideo()
+    // Intercept native Back button when media is selected or FAB menu is expanded
+    BackHandler(enabled = isFabMenuExpanded || (uiState.selectedMedia != null && !uiState.isEncoding)) {
+        if (isFabMenuExpanded) {
+            isFabMenuExpanded = false
+        } else {
+            viewModel.clearSelectedVideo()
+        }
     }
 
-    // Launchers for Video, Image, Audio, and Universal File Manager (SAF)
-    val videoPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickVisualMedia()
+    // Native Document Pickers (File Manager SAF) for Video, Image, and Audio
+    val videoDocumentPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         uri?.let { viewModel.onMediaSelected(it, MediaType.VIDEO) }
     }
 
-    val imagePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickVisualMedia()
+    val imageDocumentPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         uri?.let { viewModel.onMediaSelected(it, MediaType.IMAGE) }
     }
 
-    val audioPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri ->
-        uri?.let { viewModel.onMediaSelected(it, MediaType.AUDIO) }
-    }
-
-    val universalDocumentPickerLauncher = rememberLauncherForActivityResult(
+    val audioDocumentPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
-        uri?.let {
-            val mime = context.contentResolver.getType(it) ?: ""
-            val mediaType = when {
-                mime.startsWith("image/") -> MediaType.IMAGE
-                mime.startsWith("audio/") -> MediaType.AUDIO
-                else -> MediaType.VIDEO
-            }
-            viewModel.onMediaSelected(it, mediaType)
-        }
+        uri?.let { viewModel.onMediaSelected(it, MediaType.AUDIO) }
     }
 
     Scaffold(
@@ -205,15 +197,77 @@ fun CompressorScreen(
         },
         floatingActionButton = {
             if (uiState.selectedMedia == null) {
-                // FAB to select Media (Video, Image, Audio)
-                ExtendedFloatingActionButton(
-                    onClick = { showMediaPickerSheet = true },
-                    icon = { Icon(Icons.Default.Add, contentDescription = null) },
-                    text = { Text("Pilih Berkas Media", fontWeight = FontWeight.Bold) },
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    shape = RoundedCornerShape(28.dp)
-                )
+                // Native Material 3 Expressive FAB Menu (Speed Dial)
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    AnimatedVisibility(
+                        visible = isFabMenuExpanded,
+                        enter = fadeIn() + expandVertically() + scaleIn(),
+                        exit = fadeOut() + shrinkVertically() + scaleOut()
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.End,
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            // 1. Video FAB Option (File Manager SAF)
+                            ExtendedFloatingActionButton(
+                                onClick = {
+                                    isFabMenuExpanded = false
+                                    videoDocumentPickerLauncher.launch(arrayOf("video/*"))
+                                },
+                                icon = { Icon(Icons.Default.Movie, contentDescription = null) },
+                                text = { Text("Video", fontWeight = FontWeight.Bold) },
+                                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                shape = RoundedCornerShape(20.dp),
+                                elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)
+                            )
+
+                            // 2. Gambar FAB Option (File Manager SAF)
+                            ExtendedFloatingActionButton(
+                                onClick = {
+                                    isFabMenuExpanded = false
+                                    imageDocumentPickerLauncher.launch(arrayOf("image/*"))
+                                },
+                                icon = { Icon(Icons.Default.Image, contentDescription = null) },
+                                text = { Text("Gambar", fontWeight = FontWeight.Bold) },
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                shape = RoundedCornerShape(20.dp),
+                                elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)
+                            )
+
+                            // 3. Audio FAB Option (File Manager SAF)
+                            ExtendedFloatingActionButton(
+                                onClick = {
+                                    isFabMenuExpanded = false
+                                    audioDocumentPickerLauncher.launch(arrayOf("audio/*"))
+                                },
+                                icon = { Icon(Icons.Default.Audiotrack, contentDescription = null) },
+                                text = { Text("Audio", fontWeight = FontWeight.Bold) },
+                                containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                                shape = RoundedCornerShape(20.dp),
+                                elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)
+                            )
+                        }
+                    }
+
+                    // Main FAB Button
+                    FloatingActionButton(
+                        onClick = { isFabMenuExpanded = !isFabMenuExpanded },
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                        shape = CircleShape
+                    ) {
+                        Icon(
+                            imageVector = if (isFabMenuExpanded) Icons.Default.Close else Icons.Default.Add,
+                            contentDescription = "FAB Menu Input Media"
+                        )
+                    }
+                }
             } else {
                 // FAB to Start or Cancel Hardware Encoding
                 ExtendedFloatingActionButton(
@@ -232,7 +286,7 @@ fun CompressorScreen(
                     },
                     text = {
                         Text(
-                            if (uiState.isEncoding) "Cancel Encoding" else "Start Encoding (${uiState.selectedMedia?.mediaType?.label})",
+                            if (uiState.isEncoding) "Batal Pengodean" else "Mulai Pengodean (${uiState.selectedMedia?.mediaType?.label})",
                             fontWeight = FontWeight.Bold
                         )
                     },
@@ -254,7 +308,7 @@ fun CompressorScreen(
             // 1. Hero Header / Media Card
             HeroMediaCard(
                 uiState = uiState,
-                onPickMediaClick = { showMediaPickerSheet = true }
+                onPickMediaClick = { isFabMenuExpanded = true }
             )
 
             val media = uiState.selectedMedia
@@ -399,121 +453,6 @@ fun CompressorScreen(
 
             Spacer(modifier = Modifier.height(72.dp))
         }
-
-        // Modal Bottom Sheet for Selecting Media Type (Video, Image, Audio)
-        if (showMediaPickerSheet) {
-            ModalBottomSheet(
-                onDismissRequest = { showMediaPickerSheet = false },
-                sheetState = rememberModalBottomSheetState(),
-                containerColor = MaterialTheme.colorScheme.surface
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(24.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    Text(
-                        text = "Pilih Jenis Media",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-                    )
-
-                    // Video
-                    Card(
-                        onClick = {
-                            showMediaPickerSheet = false
-                            videoPickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
-                        },
-                        shape = RoundedCornerShape(20.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(Icons.Default.Movie, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer)
-                            Spacer(modifier = Modifier.width(16.dp))
-                            Column {
-                                Text("🎥 Berkas Video", fontWeight = FontWeight.Bold)
-                                Text("Kompresi Hardware MediaCodec (HEVC, AVC, VP9, AV1)", style = MaterialTheme.typography.bodySmall)
-                            }
-                        }
-                    }
-
-                    // Image
-                    Card(
-                        onClick = {
-                            showMediaPickerSheet = false
-                            imagePickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                        },
-                        shape = RoundedCornerShape(20.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(Icons.Default.Image, contentDescription = null, tint = MaterialTheme.colorScheme.onSecondaryContainer)
-                            Spacer(modifier = Modifier.width(16.dp))
-                            Column {
-                                Text("🖼️ Berkas Gambar", fontWeight = FontWeight.Bold)
-                                Text("Encode & Kompresi WEBP, JPEG, PNG", style = MaterialTheme.typography.bodySmall)
-                            }
-                        }
-                    }
-
-                    // Audio
-                    Card(
-                        onClick = {
-                            showMediaPickerSheet = false
-                            audioPickerLauncher.launch("audio/*")
-                        },
-                        shape = RoundedCornerShape(20.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(Icons.Default.Audiotrack, contentDescription = null, tint = MaterialTheme.colorScheme.onTertiaryContainer)
-                            Spacer(modifier = Modifier.width(16.dp))
-                            Column {
-                                Text("🎵 Berkas Audio", fontWeight = FontWeight.Bold)
-                                Text("Encode Audio AAC, Opus, AMR-WB", style = MaterialTheme.typography.bodySmall)
-                            }
-                        }
-                    }
-
-                    // Native Universal File Manager (SAF)
-                    Card(
-                        onClick = {
-                            showMediaPickerSheet = false
-                            universalDocumentPickerLauncher.launch(arrayOf("video/*", "image/*", "audio/*", "*/*"))
-                        },
-                        shape = RoundedCornerShape(20.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(Icons.Default.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                            Spacer(modifier = Modifier.width(16.dp))
-                            Column {
-                                Text("📂 File Manager / Penjelajah Berkas Native", fontWeight = FontWeight.Bold)
-                                Text("Buka berkas dari Aplikasi File Manager, SD Card, atau Drive HP", style = MaterialTheme.typography.bodySmall)
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-                }
-            }
-        }
     }
 }
 
@@ -563,13 +502,13 @@ fun HeroMediaCard(
                     }
 
                     Text(
-                        text = "Hardware Video, Gambar & Audio Encoder",
+                        text = "Hardware Media Encoder",
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
                     Text(
-                        text = "Kompresi Hardware MediaCodec • Dynamic M3 Expressive UI",
+                        text = "Kompresi Hardware MediaCodec • Native M3 Expressive FAB Menu",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                     )
@@ -585,7 +524,7 @@ fun HeroMediaCard(
                     ) {
                         Icon(imageVector = Icons.Default.Add, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Pilih Berkas Media (FAB)", fontWeight = FontWeight.Bold)
+                        Text("Pilih Berkas (Tekan FAB)", fontWeight = FontWeight.Bold)
                     }
                 }
             } else {
@@ -686,7 +625,6 @@ fun ImageEncodingSection(
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
         )
 
-        // Format
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(text = "Format Gambar Target", style = MaterialTheme.typography.labelLarge)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -707,7 +645,6 @@ fun ImageEncodingSection(
             }
         }
 
-        // Quality Slider
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -725,7 +662,6 @@ fun ImageEncodingSection(
             )
         }
 
-        // Resizing Scale Chips
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(text = "Ukuran Dimensi (Resizing)", style = MaterialTheme.typography.labelLarge)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -761,7 +697,6 @@ fun AudioEncodingSection(
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
         )
 
-        // Audio Codec
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(text = "Audio Codec Target", style = MaterialTheme.typography.labelLarge)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -787,7 +722,6 @@ fun AudioEncodingSection(
             }
         }
 
-        // Audio Bitrate
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(text = "Target Audio Bitrate", style = MaterialTheme.typography.labelLarge)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1164,7 +1098,6 @@ fun AdvancedParametersSection(
                 exit = shrinkVertically() + fadeOut()
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    // Frame Rate
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text("Target Frame Rate (FPS)", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold))
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1185,7 +1118,6 @@ fun AdvancedParametersSection(
                         }
                     }
 
-                    // Keyframe Interval
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text("Keyframe Interval (I-Frame Seconds)", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold))
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1206,7 +1138,6 @@ fun AdvancedParametersSection(
                         }
                     }
 
-                    // Rotation
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text("Rotasi Video", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold))
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
