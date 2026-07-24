@@ -45,7 +45,9 @@ class VideoEncodingEngine(private val context: Context) {
 
         val videoEncoderSettingsBuilder = VideoEncoderSettings.Builder()
         if (config.targetBitrateBps > 0) {
-            videoEncoderSettingsBuilder.setBitrate(config.targetBitrateBps)
+            // Hardware safety floor: clamp minimum custom bitrate to 300_000 bps (0.3 Mbps) to prevent Qualcomm MediaCodec starvation
+            val safeBitrateBps = config.targetBitrateBps.coerceAtLeast(300_000)
+            videoEncoderSettingsBuilder.setBitrate(safeBitrateBps)
         }
         val videoEncoderSettings = videoEncoderSettingsBuilder.build()
 
@@ -149,13 +151,20 @@ class VideoEncodingEngine(private val context: Context) {
         targetWidth: Int,
         targetHeight: Int
     ): Boolean {
-        var inputStream: InputStream? = null
-        try {
-            inputStream = context.contentResolver.openInputStream(inputUri) ?: return false
-            var bitmap = BitmapFactory.decodeStream(inputStream) ?: return false
+        return try {
+            val seekableUri = prepareInputUri(inputUri)
+            val bitmap = if (seekableUri.scheme == "file" && seekableUri.path != null) {
+                BitmapFactory.decodeFile(seekableUri.path)
+            } else {
+                context.contentResolver.openInputStream(seekableUri)?.use { input ->
+                    BitmapFactory.decodeStream(input)
+                }
+            } ?: return false
 
-            if (targetWidth > 0 && targetHeight > 0) {
-                bitmap = Bitmap.createScaledBitmap(bitmap, targetWidth, targetHeight, true)
+            val finalBitmap = if (targetWidth > 0 && targetHeight > 0 && (bitmap.width != targetWidth || bitmap.height != targetHeight)) {
+                Bitmap.createScaledBitmap(bitmap, targetWidth, targetHeight, true)
+            } else {
+                bitmap
             }
 
             val compressFormat = when (format.uppercase()) {
@@ -170,14 +179,12 @@ class VideoEncodingEngine(private val context: Context) {
             }
 
             FileOutputStream(outputFile).use { out ->
-                bitmap.compress(compressFormat, quality.coerceIn(1, 100), out)
+                finalBitmap.compress(compressFormat, quality.coerceIn(1, 100), out)
             }
-            return true
+            true
         } catch (e: Exception) {
             e.printStackTrace()
-            return false
-        } finally {
-            try { inputStream?.close() } catch (_: Exception) {}
+            false
         }
     }
 }

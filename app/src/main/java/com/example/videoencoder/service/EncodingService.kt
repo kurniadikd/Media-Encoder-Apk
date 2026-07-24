@@ -184,7 +184,12 @@ class EncodingService : Service() {
                         val errorCodeName = exception.errorCodeName
                         val errorCode = exception.errorCode
                         val causeMsg = exception.cause?.message ?: exception.localizedMessage ?: "Hardware Muxer Error"
-                        val detailedLogText = "Pengodean Gagal [$errorCodeName ($errorCode)]: $causeMsg"
+
+                        val diagnosticNote = if (errorCode == 7002 || errorCodeName.contains("TIMEOUT")) {
+                            " (Penyebab: Hardware Codec HP menghentikan sinyal frame output karena bitrate terlalu rendah. Harap naikkan bitrate ke min. 0.3Mbps - 1.0Mbps atau gunakan Auto Bitrate)"
+                        } else ""
+
+                        val detailedLogText = "Pengodean Gagal [$errorCodeName ($errorCode)]: $causeMsg$diagnosticNote"
 
                         _progressState.value = ServiceProgressState(
                             status = EncodingStatus.ERROR,
