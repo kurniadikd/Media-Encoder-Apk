@@ -2,6 +2,7 @@ package com.example.videoencoder.ui
 
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -54,6 +55,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FolderZip
 import androidx.compose.material.icons.filled.Image
@@ -62,6 +64,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -71,6 +74,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -104,7 +108,10 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -127,7 +134,7 @@ fun CompressorScreen(
     AnimatedContent(
         targetState = uiState.currentScreen,
         transitionSpec = {
-            if (targetState == AppScreen.PREPROCESS) {
+            if (targetState == AppScreen.PREPROCESS || targetState == AppScreen.LOGS) {
                 (slideInHorizontally(initialOffsetX = { it }, animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) + fadeIn()).togetherWith(
                     slideOutHorizontally(targetOffsetX = { -it / 3 }) + fadeOut()
                 )
@@ -142,6 +149,7 @@ fun CompressorScreen(
         when (screen) {
             AppScreen.MAIN -> MainScreenView(viewModel = viewModel, uiState = uiState)
             AppScreen.PREPROCESS -> PreprocessScreenView(viewModel = viewModel, uiState = uiState)
+            AppScreen.LOGS -> LogsScreenView(viewModel = viewModel, uiState = uiState)
         }
     }
 }
@@ -215,6 +223,15 @@ fun MainScreenView(
                             )
                         }
                     },
+                    actions = {
+                        // Native M3 Expressive Log Action Button
+                        FilledTonalIconButton(
+                            onClick = { viewModel.navigateToLogsScreen() },
+                            shape = CircleShape
+                        ) {
+                            Icon(Icons.Default.Terminal, contentDescription = "Log Sistem & Enkoder")
+                        }
+                    },
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = MaterialTheme.colorScheme.surface
                     )
@@ -262,7 +279,7 @@ fun MainScreenView(
                                 context.startActivity(chooser)
                             }
                         } catch (e: Exception) {
-                            android.widget.Toast.makeText(context, "Gagal membuka media: ${e.localizedMessage}", android.widget.Toast.LENGTH_LONG).show()
+                            Toast.makeText(context, "Gagal membuka media: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
                         }
                     },
                     onShare = { item ->
@@ -294,7 +311,7 @@ fun MainScreenView(
                                 context.startActivity(chooser)
                             }
                         } catch (e: Exception) {
-                            android.widget.Toast.makeText(context, "Gagal membagikan media: ${e.localizedMessage}", android.widget.Toast.LENGTH_LONG).show()
+                            Toast.makeText(context, "Gagal membagikan media: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
                         }
                     }
                 )
@@ -429,6 +446,14 @@ fun PreprocessScreenView(
                         text = "Pengaturan Enkoder (${media.mediaType.label})",
                         style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
                     )
+                },
+                actions = {
+                    FilledTonalIconButton(
+                        onClick = { viewModel.navigateToLogsScreen() },
+                        shape = CircleShape
+                    ) {
+                        Icon(Icons.Default.Terminal, contentDescription = "Log Sistem & Enkoder")
+                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
             )
@@ -725,6 +750,144 @@ fun PreprocessScreenView(
     }
 }
 
+/**
+ * Dedicated Native Material 3 Expressive Logs Screen View
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun LogsScreenView(
+    viewModel: CompressorViewModel,
+    uiState: CompressorUiState
+) {
+    val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
+
+    BackHandler {
+        viewModel.navigateToMainScreen()
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                navigationIcon = {
+                    IconButton(onClick = { viewModel.navigateToMainScreen() }) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Kembali")
+                    }
+                },
+                title = {
+                    Text(
+                        text = "Log Sistem & Enkoder",
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                    )
+                },
+                actions = {
+                    // Native M3 Expressive Copy Logs Button
+                    FilledTonalButton(
+                        onClick = {
+                            val allLogsText = uiState.logList.joinToString("\n") { log ->
+                                "[${log.timestamp}] [${log.level}] [${log.tag}] ${log.message}"
+                            }
+                            clipboardManager.setText(AnnotatedString(allLogsText))
+                            Toast.makeText(context, "Seluruh log disalin ke klipboard!", Toast.LENGTH_SHORT).show()
+                        },
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.padding(end = 6.dp)
+                    ) {
+                        Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Salin Log", fontWeight = FontWeight.Bold)
+                    }
+
+                    // Native M3 Clear Logs Button
+                    IconButton(onClick = { viewModel.clearLogs() }) {
+                        Icon(Icons.Default.Delete, contentDescription = "Bersihkan Log")
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
+            )
+        }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            if (uiState.logList.isEmpty()) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                    border = null
+                ) {
+                    Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                        Text(
+                            text = "Belum ada log sistem tercatat.",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                }
+            } else {
+                uiState.logList.forEach { log ->
+                    LogCardItem(log = log)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun LogCardItem(log: LogEntry) {
+    val (badgeBgColor, badgeTextColor) = when (log.level) {
+        LogLevel.SUCCESS -> MaterialTheme.colorScheme.tertiaryContainer to MaterialTheme.colorScheme.onTertiaryContainer
+        LogLevel.WARNING -> MaterialTheme.colorScheme.secondaryContainer to MaterialTheme.colorScheme.onSecondaryContainer
+        LogLevel.ERROR -> MaterialTheme.colorScheme.errorContainer to MaterialTheme.colorScheme.onErrorContainer
+        else -> MaterialTheme.colorScheme.primaryContainer to MaterialTheme.colorScheme.onPrimaryContainer
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        border = null
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = badgeBgColor
+                ) {
+                    Text(
+                        text = "[${log.level}] ${log.tag}",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = badgeTextColor,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                    )
+                }
+
+                Text(
+                    text = log.timestamp,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+
+            Text(
+                text = log.message,
+                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun M3DropdownSelector(
@@ -998,7 +1161,6 @@ fun M3ExpressiveCircularWavyProgressIndicator(
         val numPoints = (sweepAngle * 0.8f).toInt().coerceAtLeast(20)
 
         val waveAmplitude = 1.8.dp.toPx()
-        // Exactly 8 wave cycles per 360 degrees (1 cycle every 45 degrees of arc!)
         val cyclesPerDegree = 8.0 / 360.0
 
         val wavePath = Path()
@@ -1008,7 +1170,6 @@ fun M3ExpressiveCircularWavyProgressIndicator(
             val currentAngleDegrees = -90f + angleDegrees
             val currentAngleRads = Math.toRadians(currentAngleDegrees.toDouble())
 
-            // Absolute angle calculation ensures constant wavelength everywhere along the arc!
             val waveOffset = waveAmplitude * sin(angleDegrees * cyclesPerDegree * 2 * PI + wavePhase)
             val currentRadius = radius + waveOffset
 

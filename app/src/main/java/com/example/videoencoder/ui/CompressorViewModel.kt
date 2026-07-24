@@ -26,10 +26,24 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 enum class AppScreen {
-    MAIN, PREPROCESS
+    MAIN, PREPROCESS, LOGS
 }
+
+enum class LogLevel {
+    INFO, SUCCESS, WARNING, ERROR
+}
+
+data class LogEntry(
+    val timestamp: String,
+    val level: LogLevel,
+    val message: String,
+    val tag: String = "SYSTEM"
+)
 
 enum class MediaType(val label: String) {
     VIDEO("Video"),
@@ -107,9 +121,9 @@ data class CompressorUiState(
     val isAudioMuted: Boolean = false,
 
     // Image Encoding Parameters
-    val imageFormat: String = "WEBP",                // "WEBP", "JPEG", "PNG"
-    val imageQuality: Int = 80,                       // 10% - 100%
-    val imageScalePercent: Int = 100,                 // 100% = Original
+    val imageFormat: String = "WEBP",
+    val imageQuality: Int = 80,
+    val imageScalePercent: Int = 100,
 
     // Storage Destination
     val storageLocationOption: StorageLocationOption = StorageLocationOption.EXTERNAL_MOVIES,
@@ -125,7 +139,8 @@ data class CompressorUiState(
     val activeEncodingFileName: String? = null,
     val completedOutputPath: String? = null,
     val errorMessage: String? = null,
-    val encodedHistory: List<EncodedFileItem> = emptyList()
+    val encodedHistory: List<EncodedFileItem> = emptyList(),
+    val logList: List<LogEntry> = emptyList()
 )
 
 class CompressorViewModel(application: Application) : AndroidViewModel(application) {
@@ -141,6 +156,7 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
             val binder = service as EncodingService.LocalBinder
             encodingService = binder.getService()
             isServiceBound = true
+            addLog("Service Pengodean terhubung.", LogLevel.INFO, "SERVICE")
 
             viewModelScope.launch {
                 encodingService?.progressState?.collect { serviceState ->
@@ -156,6 +172,7 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                             }
                         }
                         EncodingService.EncodingStatus.COMPLETED -> {
+                            addLog("Pengodean Hardware Selesai! File output: ${serviceState.outputPath}", LogLevel.SUCCESS, "HARDWARE")
                             _uiState.update {
                                 it.copy(
                                     isEncoding = false,
@@ -169,6 +186,7 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                             refreshEncodedHistory()
                         }
                         EncodingService.EncodingStatus.ERROR -> {
+                            addLog("Pengodean Hardware Gagal: ${serviceState.errorMessage}", LogLevel.ERROR, "HARDWARE")
                             _uiState.update {
                                 it.copy(
                                     isEncoding = false,
@@ -180,6 +198,7 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                             }
                         }
                         EncodingService.EncodingStatus.CANCELLED -> {
+                            addLog("Proses Pengodean dibatalkan oleh pengguna.", LogLevel.WARNING, "USER")
                             _uiState.update {
                                 it.copy(
                                     isEncoding = false,
@@ -198,15 +217,35 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
         override fun onServiceDisconnected(name: ComponentName?) {
             encodingService = null
             isServiceBound = false
+            addLog("Service Pengodean terputus.", LogLevel.WARNING, "SERVICE")
         }
     }
 
     init {
+        addLog("Aplikasi Media Encoder diinisialisasi.", LogLevel.INFO, "SYSTEM")
         val intent = Intent(application, EncodingService::class.java)
         application.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
 
         discoverHardwareEncoders()
         refreshEncodedHistory()
+    }
+
+    fun addLog(message: String, level: LogLevel = LogLevel.INFO, tag: String = "SYSTEM") {
+        val timeStr = SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault()).format(Date())
+        val entry = LogEntry(timestamp = timeStr, level = level, message = message, tag = tag)
+        _uiState.update { current ->
+            val updatedLogs = current.logList + entry
+            current.copy(logList = updatedLogs)
+        }
+    }
+
+    fun clearLogs() {
+        _uiState.update { it.copy(logList = emptyList()) }
+        addLog("Riwayat log telah dibersihkan.", LogLevel.INFO, "SYSTEM")
+    }
+
+    fun navigateToLogsScreen() {
+        _uiState.update { it.copy(currentScreen = AppScreen.LOGS) }
     }
 
     private fun discoverHardwareEncoders() {
@@ -245,6 +284,7 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
             result.add(MimeTypes.VIDEO_AV1 to "AV1")
         }
 
+        addLog("Penemuan Hardware Encoders Perangkat: ${result.size - 1} encoder terdeteksi.", LogLevel.INFO, "HARDWARE")
         _uiState.update { it.copy(availableVideoEncoders = result) }
     }
 
@@ -303,6 +343,7 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
             val file = File(path)
             if (file.exists()) {
                 file.delete()
+                addLog("File dihapus: ${file.name}", LogLevel.INFO, "STORAGE")
             }
             refreshEncodedHistory()
         }
@@ -335,7 +376,6 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
             var fileName = "Selected Media"
             var fileSize = 0L
 
-            // Try to extract display name and size from ContentResolver query
             try {
                 context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use { cursor ->
                     if (cursor.moveToFirst()) {
@@ -359,6 +399,8 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                 } catch (_: Exception) {}
             }
 
+            addLog("Media dipilih: $fileName (${mediaType.label}), Ukuran: ${String.format(Locale.US, "%.1f MB", fileSize / 1_000_000f)}", LogLevel.INFO, "INPUT")
+
             when (mediaType) {
                 MediaType.VIDEO -> {
                     var durationSec = 0L
@@ -375,7 +417,7 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                         if (w > 0) width = w
                         if (h > 0) height = h
                     } catch (_: Exception) {
-                        // Fallback gracefully for video formats where system MediaMetadataRetriever fails (e.g. AVI, WMV, FLV)
+                        addLog("Gagal membaca metadata parsial video (menggunakan fallback 1920x1080).", LogLevel.WARNING, "METADATA")
                     } finally {
                         try { retriever.release() } catch (_: Exception) {}
                     }
@@ -568,7 +610,9 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
             context.filesDir
         }
 
-        // Switch to MAIN screen to show unified encoding + history list
+        addLog("Memulai pengodean untuk berkas: ${media.fileName}", LogLevel.INFO, "ENCODER")
+
+        // Switch to MAIN screen immediately (0ms lag!)
         _uiState.update {
             it.copy(
                 currentScreen = AppScreen.MAIN,
@@ -600,6 +644,7 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                 }
 
                 if (success) {
+                    addLog("Pengodean gambar selesai: ${outputFile.name}", LogLevel.SUCCESS, "IMAGE")
                     try {
                         android.media.MediaScannerConnection.scanFile(
                             context,
@@ -620,6 +665,7 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                     }
                     refreshEncodedHistory()
                 } else {
+                    addLog("Gagal memproses pengodean gambar.", LogLevel.ERROR, "IMAGE")
                     _uiState.update {
                         it.copy(
                             isEncoding = false,
@@ -680,6 +726,7 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
             action = EncodingService.ACTION_CANCEL
         }
         context.startService(serviceIntent)
+        addLog("Mengirim perintah pembatalan encoding ke service.", LogLevel.WARNING, "USER")
         _uiState.update {
             it.copy(
                 isEncoding = false,
