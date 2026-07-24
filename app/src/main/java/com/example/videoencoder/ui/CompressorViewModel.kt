@@ -172,8 +172,8 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                             val timeText = if (currentProgress > 3 && elapsedMs > 500) {
                                 val totalEstMs = (elapsedMs.toFloat() / (currentProgress / 100.0f)).toLong()
                                 val remainingMs = (totalEstMs - elapsedMs).coerceAtLeast(0L)
-                                val remainingSec = Math.round(remainingMs / 1000.0f)
-                                "Sisa ~${remainingSec}s"
+                                val remainingSec = Math.round(remainingMs / 1000.0f).toLong()
+                                "Sisa ~${formatAdaptiveTime(remainingSec)}"
                             } else {
                                 "Menghitung sisa waktu..."
                             }
@@ -767,6 +767,19 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
         val audioBitrateBps = if (state.isAudioMuted) 0f else (if (state.audioBitrateKbps == 0) 128_000f else state.audioBitrateKbps * 1000f)
         val totalBitrateBps = videoBitrateBps + audioBitrateBps
         return (totalBitrateBps / 8.0f * media.durationSec) / 1_000_000f
+    }
+
+    private fun formatAdaptiveTime(totalSeconds: Long): String {
+        if (totalSeconds <= 0) return "0d"
+        val hours = totalSeconds / 3600
+        val minutes = (totalSeconds % 3600) / 60
+        val secs = totalSeconds % 60
+
+        return when {
+            hours > 0 -> "${hours}j ${minutes}m ${secs}d"
+            minutes > 0 -> "${minutes}m ${secs}d"
+            else -> "${secs}d"
+        }
     }
 
     override fun onCleared() {
