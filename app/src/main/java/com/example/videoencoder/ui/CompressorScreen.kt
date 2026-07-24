@@ -59,6 +59,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FloatingActionButton
@@ -951,8 +952,8 @@ fun M3ExpressiveCircularWavyProgressIndicator(
             val waveOffset = waveAmplitude * sin(fraction * waveFrequency * 2 * PI + wavePhase)
             val currentRadius = radius + waveOffset
 
-            val x = center.x + currentRadius * cos(currentAngleRads).toFloat()
-            val y = center.y + currentRadius * sin(currentAngleRads).toFloat()
+            val x = (center.x + currentRadius * cos(currentAngleRads)).toFloat()
+            val y = (center.y + currentRadius * sin(currentAngleRads)).toFloat()
 
             if (i == 0) {
                 wavePath.moveTo(x, y)
