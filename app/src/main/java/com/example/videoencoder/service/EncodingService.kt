@@ -217,7 +217,8 @@ class EncodingService : Service() {
                             if (_progressState.value.progressPercent != currentProgress) {
                                 _progressState.value = _progressState.value.copy(
                                     status = EncodingStatus.RUNNING,
-                                    progressPercent = currentProgress
+                                    progressPercent = currentProgress,
+                                    outputPath = outputPath
                                 )
                                 updateNotification(currentProgress, "Proses Pengodean: $currentProgress%", isFinished = false)
                             }

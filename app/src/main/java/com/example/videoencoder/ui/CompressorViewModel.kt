@@ -169,9 +169,23 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                     when (serviceState.status) {
                         EncodingService.EncodingStatus.RUNNING -> {
                             val currentProgress = serviceState.progressPercent
-                            val totalEstMb = _uiState.value.estimatedSizeMb
-                            val currentMb = totalEstMb * (currentProgress / 100.0f)
-                            val sizeText = String.format(Locale.US, "%.1f MB / %.1f MB", currentMb, totalEstMb)
+                            val initialTotalEstMb = _uiState.value.estimatedSizeMb
+
+                            var currentMb = initialTotalEstMb * (currentProgress / 100.0f)
+                            var dynamicTotalEstMb = initialTotalEstMb
+
+                            // Measure actual output file bytes written to disk so far by hardware encoder
+                            val file = serviceState.outputPath?.let { File(it) }
+                            if (file != null && file.exists() && file.length() > 0) {
+                                val actualBytes = file.length()
+                                val measuredMb = actualBytes / 1_000_000f
+                                if (measuredMb > 0.01f && currentProgress > 3) {
+                                    currentMb = measuredMb
+                                    dynamicTotalEstMb = (measuredMb / (currentProgress / 100.0f)).coerceAtLeast(measuredMb)
+                                }
+                            }
+
+                            val sizeText = String.format(Locale.US, "%.1f MB / %.1f MB", currentMb, dynamicTotalEstMb)
 
                             val elapsedMs = System.currentTimeMillis() - encodingStartTimeMs
                             val timeText = if (currentProgress > 3 && elapsedMs > 500) {
