@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.LinearEasing
@@ -22,8 +23,11 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -119,9 +123,25 @@ fun CompressorScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
-    when (uiState.currentScreen) {
-        AppScreen.MAIN -> MainScreenView(viewModel = viewModel, uiState = uiState)
-        AppScreen.PREPROCESS -> PreprocessScreenView(viewModel = viewModel, uiState = uiState)
+    AnimatedContent(
+        targetState = uiState.currentScreen,
+        transitionSpec = {
+            if (targetState == AppScreen.PREPROCESS) {
+                (slideInHorizontally(initialOffsetX = { it }, animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) + fadeIn()).togetherWith(
+                    slideOutHorizontally(targetOffsetX = { -it / 3 }) + fadeOut()
+                )
+            } else {
+                (slideInHorizontally(initialOffsetX = { -it / 3 }, animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) + fadeIn()).togetherWith(
+                    slideOutHorizontally(targetOffsetX = { it }) + fadeOut()
+                )
+            }
+        },
+        label = "screen_transition"
+    ) { screen ->
+        when (screen) {
+            AppScreen.MAIN -> MainScreenView(viewModel = viewModel, uiState = uiState)
+            AppScreen.PREPROCESS -> PreprocessScreenView(viewModel = viewModel, uiState = uiState)
+        }
     }
 }
 
