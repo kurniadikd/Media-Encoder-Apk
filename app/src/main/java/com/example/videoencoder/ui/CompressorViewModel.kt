@@ -409,8 +409,8 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
         val extension = "mp4"
         val outputFile = File(outputDir, "compressed_${System.currentTimeMillis()}.$extension")
 
-        val targetWidth = if (state.resolutionPreset == ResolutionPreset.DEFAULT || state.resolutionPreset == ResolutionPreset.ORIGINAL) 0 else state.resolutionPreset.width
-        val targetHeight = if (state.resolutionPreset == ResolutionPreset.DEFAULT || state.resolutionPreset == ResolutionPreset.ORIGINAL) 0 else state.resolutionPreset.height
+        val targetWidth = if (state.resolutionPreset == ResolutionPreset.DEFAULT) 0 else state.resolutionPreset.width
+        val targetHeight = if (state.resolutionPreset == ResolutionPreset.DEFAULT) 0 else state.resolutionPreset.height
 
         val bitrateBps = if (state.useAutoBitrate) 0 else (state.targetBitrateMbps * 1_000_000).toInt()
         val audioBitrateBps = state.audioBitrateKbps * 1000
