@@ -38,6 +38,7 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -75,6 +76,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonColors
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardColors
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -96,6 +98,7 @@ import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SelectableChipColors
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
@@ -134,7 +137,7 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
-// Native Material 3 Expressive Button Composables with Dynamic Shape Morphing & Spring Physics!
+// Native Material 3 Expressive Component System with Dynamic Shape Morphing & Spring Physics!
 
 @Composable
 fun M3ExpressiveButton(
@@ -319,6 +322,99 @@ fun M3ExpressiveLargeFAB(
         interactionSource = interactionSource,
         content = content
     )
+}
+
+@Composable
+fun M3ExpressiveFilterChip(
+    selected: Boolean,
+    onClick: () -> Unit,
+    label: @Composable () -> Unit,
+    modifier: Modifier = Modifier,
+    shape: Shape = RoundedCornerShape(14.dp),
+    pressedShape: Shape = RoundedCornerShape(8.dp),
+    colors: SelectableChipColors = FilterChipDefaults.filterChipColors(
+        selectedContainerColor = MaterialTheme.colorScheme.primary,
+        selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+    )
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    val animatedScale by animateFloatAsState(
+        targetValue = if (isPressed) 0.94f else 1.0f,
+        animationSpec = spring(
+            stiffness = Spring.StiffnessMediumLow,
+            dampingRatio = Spring.DampingRatioMediumBouncy
+        ),
+        label = "expressive_chip_scale"
+    )
+
+    val currentShape = if (isPressed) pressedShape else shape
+
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = label,
+        modifier = modifier.graphicsLayer {
+            scaleX = animatedScale
+            scaleY = animatedScale
+        },
+        shape = currentShape,
+        colors = colors,
+        border = null,
+        interactionSource = interactionSource
+    )
+}
+
+@Composable
+fun M3ExpressiveCard(
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+    shape: Shape = RoundedCornerShape(20.dp),
+    pressedShape: Shape = RoundedCornerShape(14.dp),
+    colors: CardColors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    content: @Composable ColumnScope.() -> Unit
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    val animatedScale by animateFloatAsState(
+        targetValue = if (isPressed && onClick != null) 0.97f else 1.0f,
+        animationSpec = spring(
+            stiffness = Spring.StiffnessMediumLow,
+            dampingRatio = Spring.DampingRatioMediumBouncy
+        ),
+        label = "expressive_card_scale"
+    )
+
+    val currentShape = if (isPressed && onClick != null) pressedShape else shape
+
+    if (onClick != null) {
+        Card(
+            modifier = modifier
+                .graphicsLayer {
+                    scaleX = animatedScale
+                    scaleY = animatedScale
+                }
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onClick = onClick
+                ),
+            shape = currentShape,
+            colors = colors,
+            border = null,
+            content = content
+        )
+    } else {
+        Card(
+            modifier = modifier,
+            shape = shape,
+            colors = colors,
+            border = null,
+            content = content
+        )
+    }
 }
 
 @Composable
@@ -751,12 +847,10 @@ fun PreprocessScreenView(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Selected Media Preview Card
-            Card(
+            // Selected Media Preview Expressive Card
+            M3ExpressiveCard(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                border = null
+                shape = RoundedCornerShape(24.dp)
             ) {
                 Row(
                     modifier = Modifier.padding(16.dp),
@@ -840,28 +934,16 @@ fun PreprocessScreenView(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            FilterChip(
+                            M3ExpressiveFilterChip(
                                 selected = uiState.useAutoBitrate,
                                 onClick = { viewModel.setUseAutoBitrate(true) },
-                                label = { Text("Default (Auto System)") },
-                                shape = RoundedCornerShape(12.dp),
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = MaterialTheme.colorScheme.primary,
-                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary
-                                ),
-                                border = null
+                                label = { Text("Default (Auto System)") }
                             )
 
-                            FilterChip(
+                            M3ExpressiveFilterChip(
                                 selected = !uiState.useAutoBitrate,
                                 onClick = { viewModel.setUseAutoBitrate(false) },
-                                label = { Text("Custom Bitrate Slider") },
-                                shape = RoundedCornerShape(12.dp),
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = MaterialTheme.colorScheme.primary,
-                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary
-                                ),
-                                border = null
+                                label = { Text("Custom Bitrate Slider") }
                             )
                         }
 
@@ -1070,11 +1152,9 @@ fun LogsScreenView(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             if (uiState.logList.isEmpty()) {
-                Card(
+                M3ExpressiveCard(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                    border = null
+                    shape = RoundedCornerShape(20.dp)
                 ) {
                     Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
                         Text(
@@ -1101,11 +1181,9 @@ fun LogCardItem(log: LogEntry) {
         else -> MaterialTheme.colorScheme.primaryContainer to MaterialTheme.colorScheme.onPrimaryContainer
     }
 
-    Card(
+    M3ExpressiveCard(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        border = null
+        shape = RoundedCornerShape(16.dp)
     ) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(
@@ -1151,6 +1229,17 @@ fun M3DropdownSelector(
     onOptionSelected: (Int) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    val animatedScale by animateFloatAsState(
+        targetValue = if (isPressed || expanded) 0.98f else 1.0f,
+        animationSpec = spring(
+            stiffness = Spring.StiffnessMediumLow,
+            dampingRatio = Spring.DampingRatioMediumBouncy
+        ),
+        label = "dropdown_scale"
+    )
 
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(text = label, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold))
@@ -1169,9 +1258,13 @@ fun M3DropdownSelector(
                     focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
                     unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant
                 ),
-                shape = RoundedCornerShape(16.dp),
+                shape = if (expanded || isPressed) RoundedCornerShape(10.dp) else RoundedCornerShape(16.dp),
                 modifier = Modifier
                     .fillMaxWidth()
+                    .graphicsLayer {
+                        scaleX = animatedScale
+                        scaleY = animatedScale
+                    }
                     .menuAnchor(type = MenuAnchorType.PrimaryNotEditable)
             )
 
@@ -1239,11 +1332,9 @@ fun UnifiedMediaListSection(
 
         // 2. Render Completed History Items
         if (uiState.encodedHistory.isEmpty() && !uiState.isEncoding) {
-            Card(
+            M3ExpressiveCard(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                border = null
+                shape = RoundedCornerShape(20.dp)
             ) {
                 Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
                     Text(
@@ -1280,11 +1371,9 @@ fun ActiveEncodingCardItem(
     mediaType: MediaType,
     onCancel: () -> Unit
 ) {
-    Card(
+    M3ExpressiveCard(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        border = null
+        shape = RoundedCornerShape(20.dp)
     ) {
         Row(
             modifier = Modifier
@@ -1493,11 +1582,10 @@ fun EncodedHistoryCardItem(
     val dateFormat = SimpleDateFormat("dd MMM, HH:mm", Locale.getDefault())
     val dateStr = dateFormat.format(Date(item.lastModifiedMs))
 
-    Card(
+    M3ExpressiveCard(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        border = null
+        onClick = onPlay,
+        shape = RoundedCornerShape(20.dp)
     ) {
         Row(
             modifier = Modifier
