@@ -31,6 +31,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -185,6 +186,7 @@ fun MainScreenView(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
+        // 1. Scaffold & List Content
         Scaffold(
             topBar = {
                 TopAppBar(
@@ -217,82 +219,6 @@ fun MainScreenView(
                         containerColor = MaterialTheme.colorScheme.surface
                     )
                 )
-            },
-            floatingActionButton = {
-                // Native Material 3 Expressive FAB Menu Speed Dial
-                Column(
-                    horizontalAlignment = Alignment.End,
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    AnimatedVisibility(
-                        visible = isFabMenuExpanded,
-                        enter = fadeIn(tween(150)) + slideInVertically(initialOffsetY = { it / 3 }, animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) + scaleIn(initialScale = 0.8f),
-                        exit = fadeOut(tween(100)) + slideOutVertically(targetOffsetY = { it / 3 }) + scaleOut(targetScale = 0.8f)
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.End,
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            // 1. Video SAF
-                            ExtendedFloatingActionButton(
-                                onClick = {
-                                    isFabMenuExpanded = false
-                                    videoPickerLauncher.launch(arrayOf("video/*"))
-                                },
-                                icon = { Icon(Icons.Default.Movie, contentDescription = null) },
-                                text = { Text("Video", fontWeight = FontWeight.Bold) },
-                                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                                shape = RoundedCornerShape(20.dp),
-                                elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)
-                            )
-
-                            // 2. Gambar SAF
-                            ExtendedFloatingActionButton(
-                                onClick = {
-                                    isFabMenuExpanded = false
-                                    imagePickerLauncher.launch(arrayOf("image/*"))
-                                },
-                                icon = { Icon(Icons.Default.Image, contentDescription = null) },
-                                text = { Text("Gambar", fontWeight = FontWeight.Bold) },
-                                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                                shape = RoundedCornerShape(20.dp),
-                                elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)
-                            )
-
-                            // 3. Audio SAF
-                            ExtendedFloatingActionButton(
-                                onClick = {
-                                    isFabMenuExpanded = false
-                                    audioPickerLauncher.launch(arrayOf("audio/*"))
-                                },
-                                icon = { Icon(Icons.Default.Audiotrack, contentDescription = null) },
-                                text = { Text("Audio", fontWeight = FontWeight.Bold) },
-                                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                                shape = RoundedCornerShape(20.dp),
-                                elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)
-                            )
-                        }
-                    }
-
-                    // Main FAB Button with Native M3 Icon Morphing Rotation
-                    FloatingActionButton(
-                        onClick = { isFabMenuExpanded = !isFabMenuExpanded },
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary,
-                        shape = CircleShape
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = "Menu Input Media",
-                            modifier = Modifier.graphicsLayer {
-                                rotationZ = fabIconRotation
-                            }
-                        )
-                    }
-                }
             }
         ) { innerPadding ->
             Column(
@@ -377,7 +303,7 @@ fun MainScreenView(
             }
         }
 
-        // Native Material Dimmed Backdrop Scrim Overlay when FAB menu is open
+        // 2. Native Material Dimmed Backdrop Scrim Overlay (Below FAB overlay, above content)
         AnimatedVisibility(
             visible = isFabMenuExpanded,
             enter = fadeIn(tween(200)),
@@ -387,8 +313,93 @@ fun MainScreenView(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(Color.Black.copy(alpha = 0.35f))
-                    .clickable { isFabMenuExpanded = false }
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { isFabMenuExpanded = false }
             )
+        }
+
+        // 3. Native M3 Speed Dial FAB Menu Overlay (At top layer so buttons receive clicks cleanly!)
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(bottom = 16.dp, end = 16.dp),
+            contentAlignment = Alignment.BottomEnd
+        ) {
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                AnimatedVisibility(
+                    visible = isFabMenuExpanded,
+                    enter = fadeIn(tween(150)) + slideInVertically(initialOffsetY = { it / 3 }, animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) + scaleIn(initialScale = 0.8f),
+                    exit = fadeOut(tween(100)) + slideOutVertically(targetOffsetY = { it / 3 }) + scaleOut(targetScale = 0.8f)
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.End,
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        // 1. Video SAF
+                        ExtendedFloatingActionButton(
+                            onClick = {
+                                isFabMenuExpanded = false
+                                videoPickerLauncher.launch(arrayOf("video/*"))
+                            },
+                            icon = { Icon(Icons.Default.Movie, contentDescription = null) },
+                            text = { Text("Video", fontWeight = FontWeight.Bold) },
+                            containerColor = MaterialTheme.colorScheme.primaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                            shape = RoundedCornerShape(20.dp),
+                            elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)
+                        )
+
+                        // 2. Gambar SAF
+                        ExtendedFloatingActionButton(
+                            onClick = {
+                                isFabMenuExpanded = false
+                                imagePickerLauncher.launch(arrayOf("image/*"))
+                            },
+                            icon = { Icon(Icons.Default.Image, contentDescription = null) },
+                            text = { Text("Gambar", fontWeight = FontWeight.Bold) },
+                            containerColor = MaterialTheme.colorScheme.primaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                            shape = RoundedCornerShape(20.dp),
+                            elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)
+                        )
+
+                        // 3. Audio SAF
+                        ExtendedFloatingActionButton(
+                            onClick = {
+                                isFabMenuExpanded = false
+                                audioPickerLauncher.launch(arrayOf("audio/*"))
+                            },
+                            icon = { Icon(Icons.Default.Audiotrack, contentDescription = null) },
+                            text = { Text("Audio", fontWeight = FontWeight.Bold) },
+                            containerColor = MaterialTheme.colorScheme.primaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                            shape = RoundedCornerShape(20.dp),
+                            elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)
+                        )
+                    }
+                }
+
+                // Main FAB Button with Native M3 Icon Morphing Rotation
+                FloatingActionButton(
+                    onClick = { isFabMenuExpanded = !isFabMenuExpanded },
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    shape = CircleShape
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = "Menu Input Media",
+                        modifier = Modifier.graphicsLayer {
+                            rotationZ = fabIconRotation
+                        }
+                    )
+                }
+            }
         }
     }
 }
