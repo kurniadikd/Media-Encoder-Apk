@@ -20,7 +20,6 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -44,30 +43,24 @@ import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderZip
-import androidx.compose.material.icons.filled.HighQuality
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.SdStorage
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material.icons.filled.VideoFile
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.ExtendedFloatingActionButton
-import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
@@ -79,9 +72,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -93,10 +85,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -112,6 +101,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlin.math.PI
+import kotlin.math.cos
 import kotlin.math.sin
 
 @Composable
@@ -152,7 +142,7 @@ fun MainScreenView(
         uri?.let { viewModel.onMediaSelected(it, MediaType.IMAGE) }
     }
 
-    val audioDocumentPickerLauncher = rememberLauncherForActivityResult(
+    val audioPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         uri?.let { viewModel.onMediaSelected(it, MediaType.AUDIO) }
@@ -238,7 +228,7 @@ fun MainScreenView(
                         ExtendedFloatingActionButton(
                             onClick = {
                                 isFabMenuExpanded = false
-                                audioDocumentPickerLauncher.launch(arrayOf("audio/*"))
+                                audioPickerLauncher.launch(arrayOf("audio/*"))
                             },
                             icon = { Icon(Icons.Default.Audiotrack, contentDescription = null) },
                             text = { Text("Audio", fontWeight = FontWeight.Bold) },
@@ -488,7 +478,67 @@ fun PreprocessScreenView(
                         onOptionSelected = { index -> viewModel.setResolutionPreset(resOptions[index]) }
                     )
 
-                    // 3. Scale Mode Dropdown
+                    // 3. Target Bitrate Slider & Auto Option (Restored Slider!)
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Target Video Bitrate", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold))
+                            Text(
+                                text = if (uiState.useAutoBitrate) "Default (Auto System)" else String.format(Locale.US, "%.1f Mbps", uiState.targetBitrateMbps),
+                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            FilterChip(
+                                selected = uiState.useAutoBitrate,
+                                onClick = { viewModel.setUseAutoBitrate(true) },
+                                label = { Text("Default (Auto System)") },
+                                shape = RoundedCornerShape(12.dp),
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = MaterialTheme.colorScheme.primary,
+                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                                ),
+                                border = null
+                            )
+
+                            FilterChip(
+                                selected = !uiState.useAutoBitrate,
+                                onClick = { viewModel.setUseAutoBitrate(false) },
+                                label = { Text("Custom Bitrate Slider") },
+                                shape = RoundedCornerShape(12.dp),
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = MaterialTheme.colorScheme.primary,
+                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                                ),
+                                border = null
+                            )
+                        }
+
+                        if (!uiState.useAutoBitrate) {
+                            Slider(
+                                value = uiState.targetBitrateMbps,
+                                onValueChange = { viewModel.setTargetBitrate(it) },
+                                valueRange = 1.0f..30.0f,
+                                steps = 57,
+                                colors = SliderDefaults.colors(
+                                    thumbColor = MaterialTheme.colorScheme.primary,
+                                    activeTrackColor = MaterialTheme.colorScheme.primary,
+                                    inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
+                                )
+                            )
+                        }
+                    }
+
+                    // 4. Scale Mode Dropdown
                     val scaleOptions = ScaleModeOption.values()
                     M3DropdownSelector(
                         label = "Modus Skala (Scaling Mode)",
@@ -497,34 +547,13 @@ fun PreprocessScreenView(
                         onOptionSelected = { index -> viewModel.setScaleModeOption(scaleOptions[index]) }
                     )
 
-                    // 4. Bitrate Control Mode Dropdown
+                    // 5. Bitrate Control Mode Dropdown
                     val bitrateModeOptions = BitrateModeOption.values()
                     M3DropdownSelector(
                         label = "Bitrate Control Mode",
                         selectedLabel = uiState.bitrateModeOption.label,
                         options = bitrateModeOptions.map { it.label },
                         onOptionSelected = { index -> viewModel.setBitrateModeOption(bitrateModeOptions[index]) }
-                    )
-
-                    // 5. Target Bitrate Mode (Auto vs Custom)
-                    val bitratePresetOptions = listOf("Default (Auto System Bitrate)", "2.0 Mbps (Hemat Ukuran)", "4.0 Mbps (Standar HD)", "8.0 Mbps (Tinggi 1080p)", "16.0 Mbps (Ultra 4K)")
-                    M3DropdownSelector(
-                        label = "Target Video Bitrate",
-                        selectedLabel = if (uiState.useAutoBitrate) "Default (Auto System Bitrate)" else String.format(Locale.US, "%.1f Mbps", uiState.targetBitrateMbps),
-                        options = bitratePresetOptions,
-                        onOptionSelected = { index ->
-                            if (index == 0) {
-                                viewModel.setUseAutoBitrate(true)
-                            } else {
-                                val bps = when (index) {
-                                    1 -> 2.0f
-                                    2 -> 4.0f
-                                    3 -> 8.0f
-                                    else -> 16.0f
-                                }
-                                viewModel.setTargetBitrate(bps)
-                            }
-                        }
                     )
 
                     // 6. Frame Rate (FPS) Dropdown
@@ -564,14 +593,27 @@ fun PreprocessScreenView(
                         onOptionSelected = { index -> viewModel.setImageFormat(imgFormats[index].first) }
                     )
 
-                    // Image Quality Dropdown
-                    val qualityList = listOf(90 to "90% (Kualitas Tinggi)", 80 to "80% (Standar)", 60 to "60% (Sedang)", 40 to "40% (Hemat Ukuran)")
-                    M3DropdownSelector(
-                        label = "Kualitas Kompresi Gambar",
-                        selectedLabel = "${uiState.imageQuality}%",
-                        options = qualityList.map { it.second },
-                        onOptionSelected = { index -> viewModel.setImageQuality(qualityList[index].first) }
-                    )
+                    // Image Quality Slider
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(text = "Kualitas Kompresi Gambar", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold))
+                            Text(text = "${uiState.imageQuality}%", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        }
+                        Slider(
+                            value = uiState.imageQuality.toFloat(),
+                            onValueChange = { viewModel.setImageQuality(it.toInt()) },
+                            valueRange = 10f..100f,
+                            steps = 17,
+                            colors = SliderDefaults.colors(
+                                thumbColor = MaterialTheme.colorScheme.primary,
+                                activeTrackColor = MaterialTheme.colorScheme.primary,
+                                inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
+                            )
+                        )
+                    }
 
                     // Image Resizing Scale Dropdown
                     val scaleList = listOf(100 to "Original (100%)", 75 to "75% Skala", 50 to "50% Skala", 25 to "25% Skala")
@@ -701,12 +743,13 @@ fun UnifiedMediaListSection(
             }
         }
 
-        // 1. Render Active Encoding Item with Expressive Wavy Progress Bar if encoding is running
+        // 1. Render Active Encoding Item Card with Circular Wavy Progress Bar
         if (uiState.isEncoding) {
             ActiveEncodingCardItem(
                 fileName = uiState.activeEncodingFileName ?: "Berkas Media",
                 progressPercent = uiState.encodingProgress,
                 statusText = uiState.encodingStatusText,
+                mediaType = uiState.selectedMedia?.mediaType ?: MediaType.VIDEO,
                 onCancel = onCancelEncoding
             )
         }
@@ -742,132 +785,187 @@ fun UnifiedMediaListSection(
     }
 }
 
+/**
+ * Active Encoding Card - Fully Synergistic with EncodedHistoryCardItem
+ * Uses M3 Expressive Circular Wavy Progress Indicator encircling the media icon!
+ */
 @Composable
 fun ActiveEncodingCardItem(
     fileName: String,
     progressPercent: Int,
     statusText: String,
+    mediaType: MediaType,
     onCancel: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
         border = null
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+                .padding(14.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                // Media Icon surrounded by M3 Expressive Circular Wavy Progress Indicator
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.size(52.dp)
+                ) {
+                    M3ExpressiveCircularWavyProgressIndicator(
+                        progress = progressPercent / 100f,
+                        modifier = Modifier.fillMaxSize(),
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.primaryContainer
+                    )
+
                     Surface(
                         shape = CircleShape,
                         color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(36.dp)
+                        modifier = Modifier.size(38.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
-                            Icon(Icons.Default.Speed, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(20.dp))
+                            Icon(
+                                imageVector = when (mediaType) {
+                                    MediaType.IMAGE -> Icons.Default.Image
+                                    MediaType.AUDIO -> Icons.Default.Audiotrack
+                                    else -> Icons.Default.Movie
+                                },
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier.size(20.dp)
+                            )
                         }
-                    }
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Column {
-                        Text(fileName, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(statusText, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
                     }
                 }
 
-                FilledTonalIconButton(
-                    onClick = onCancel,
-                    shape = CircleShape,
-                    colors = IconButtonDefaults.filledTonalIconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                        contentColor = MaterialTheme.colorScheme.onErrorContainer
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Column {
+                    Text(
+                        text = fileName,
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
-                ) {
-                    Icon(Icons.Default.Stop, contentDescription = "Batal")
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "$progressPercent%",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text("•", style = MaterialTheme.typography.labelSmall)
+                        Text(
+                            text = statusText,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
             }
 
-            // Material 3 Expressive Wavy Progress Indicator
-            M3ExpressiveWavyProgressIndicator(
-                progress = progressPercent / 100f,
-                modifier = Modifier.fillMaxWidth(),
-                color = MaterialTheme.colorScheme.primary,
-                trackColor = MaterialTheme.colorScheme.surface
-            )
+            FilledTonalIconButton(
+                onClick = onCancel,
+                shape = CircleShape,
+                colors = IconButtonDefaults.filledTonalIconButtonColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer
+                )
+            ) {
+                Icon(Icons.Default.Stop, contentDescription = "Batal")
+            }
         }
     }
 }
 
 /**
- * Custom Material 3 Expressive Wavy Progress Indicator Animation
+ * Custom Material 3 Expressive Circular Wavy Progress Indicator
+ * Encircles the media type icon with sinusoidal wave active track!
  */
 @Composable
-fun M3ExpressiveWavyProgressIndicator(
+fun M3ExpressiveCircularWavyProgressIndicator(
     progress: Float,
     modifier: Modifier = Modifier,
     color: Color = MaterialTheme.colorScheme.primary,
-    trackColor: Color = MaterialTheme.colorScheme.surface
+    trackColor: Color = MaterialTheme.colorScheme.primaryContainer
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "wave")
-    val phase by infiniteTransition.animateFloat(
+    val infiniteTransition = rememberInfiniteTransition(label = "circular_wave")
+    val rotationAngle by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2400, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "rotation"
+    )
+    val wavePhase by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = (2 * PI).toFloat(),
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1200, easing = LinearEasing),
+            animation = tween(durationMillis = 1000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
-        label = "phase"
+        label = "wavePhase"
     )
 
-    Canvas(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(14.dp)
-            .clip(RoundedCornerShape(7.dp))
-    ) {
-        val width = size.width
-        val height = size.height
-        val activeWidth = width * progress.coerceIn(0f, 1f)
+    Canvas(modifier = modifier) {
+        val diameter = minOf(size.width, size.height)
+        val strokeWidth = 3.5.dp.toPx()
+        val radius = (diameter - strokeWidth * 2) / 2f
+        val center = Offset(size.width / 2f, size.height / 2f)
 
-        // Draw track background
-        drawRoundRect(
+        // Draw track background circle
+        drawCircle(
             color = trackColor,
-            size = Size(width, height),
-            cornerRadius = CornerRadius(height / 2, height / 2)
+            radius = radius,
+            center = center,
+            style = Stroke(width = strokeWidth)
         )
 
-        if (activeWidth > 0) {
-            val wavePath = Path()
-            val amplitude = height / 3.5f
-            val waveLength = 36.dp.toPx()
-            val midY = height / 2f
+        // Draw active sinusoidal wavy arc around the circle
+        val clampedProgress = progress.coerceIn(0.05f, 1.0f)
+        val sweepAngle = 360f * clampedProgress
+        val numPoints = 100
+        val waveAmplitude = 2.0.dp.toPx()
+        val waveFrequency = 10f
 
-            wavePath.moveTo(0f, midY)
-            var x = 0f
-            while (x <= activeWidth) {
-                val relativeX = x / waveLength
-                val y = midY + amplitude * sin(relativeX * 2 * PI.toFloat() + phase)
+        val wavePath = Path()
+        for (i in 0..numPoints) {
+            val fraction = i.toFloat() / numPoints
+            val currentAngleDegrees = rotationAngle - 90f + fraction * sweepAngle
+            val currentAngleRads = Math.toRadians(currentAngleDegrees.toDouble())
+
+            val waveOffset = waveAmplitude * sin(fraction * waveFrequency * 2 * PI + wavePhase)
+            val currentRadius = radius + waveOffset
+
+            val x = center.x + currentRadius * cos(currentAngleRads).toFloat()
+            val y = center.y + currentRadius * sin(currentAngleRads).toFloat()
+
+            if (i == 0) {
+                wavePath.moveTo(x, y)
+            } else {
                 wavePath.lineTo(x, y)
-                x += 2f
             }
-
-            drawPath(
-                path = wavePath,
-                color = color,
-                style = Stroke(
-                    width = height / 1.5f,
-                    cap = StrokeCap.Round
-                )
-            )
         }
+
+        drawPath(
+            path = wavePath,
+            color = color,
+            style = Stroke(width = strokeWidth * 1.3f, cap = StrokeCap.Round)
+        )
     }
 }
 
