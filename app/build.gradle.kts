@@ -28,6 +28,8 @@ android {
             storePassword = "mediaencoder"
             keyAlias = "mediaencoder"
             keyPassword = "mediaencoder"
+            isV1SigningEnabled = true
+            isV2SigningEnabled = true
         }
     }
 
