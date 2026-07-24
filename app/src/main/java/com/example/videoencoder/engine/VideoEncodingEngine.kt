@@ -1,6 +1,8 @@
 package com.example.videoencoder.engine
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
@@ -14,12 +16,15 @@ import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.Transformer
 import androidx.media3.transformer.VideoEncoderSettings
+import java.io.File
+import java.io.FileOutputStream
+import java.io.InputStream
 
 data class EncodingConfig(
     val videoFormat: String = "DEFAULT",            // "DEFAULT" or specific MIME type
     val targetBitrateBps: Int = 0,                  // 0 = Auto / Default Encoder Bitrate
     val bitrateMode: Int = 1,                       // 1=VBR, 2=CBR, 0=CQ
-    val targetWidth: Int = 0,                       // 0 = Original Resolution (No Scaling Effect)
+    val targetWidth: Int = 0,                       // 0 = Original Resolution
     val targetHeight: Int = 0,                      // 0 = Original Resolution
     val scaleMode: Int = Presentation.LAYOUT_SCALE_TO_FIT,
     val frameRate: Int = 0,                         // 0 = Original FPS
@@ -38,7 +43,6 @@ class VideoEncodingEngine(private val context: Context) {
         onError: (ExportException) -> Unit
     ): Transformer {
 
-        // 1. Configure Hardware Video Encoder Settings
         val videoEncoderSettingsBuilder = VideoEncoderSettings.Builder()
         if (config.targetBitrateBps > 0) {
             videoEncoderSettingsBuilder.setBitrate(config.targetBitrateBps)
@@ -49,7 +53,6 @@ class VideoEncodingEngine(private val context: Context) {
             .setRequestedVideoEncoderSettings(videoEncoderSettings)
             .build()
 
-        // 2. Build Media3 Transformer with Video & Audio MimeTypes
         val builder = Transformer.Builder(context)
             .setEncoderFactory(customEncoderFactory)
             .addListener(object : Transformer.Listener {
@@ -80,7 +83,6 @@ class VideoEncodingEngine(private val context: Context) {
     fun createEditedMediaItem(inputUri: Uri, config: EncodingConfig): EditedMediaItem {
         val videoEffects = mutableListOf<androidx.media3.common.Effect>()
 
-        // Apply Scaling effect only if target width/height are specified (> 0)
         if (config.targetWidth > 0 && config.targetHeight > 0) {
             val scaleEffect = Presentation.createForWidthAndHeight(
                 config.targetWidth, config.targetHeight, config.scaleMode
@@ -88,7 +90,6 @@ class VideoEncodingEngine(private val context: Context) {
             videoEffects.add(scaleEffect)
         }
 
-        // Apply Rotation effect if specified (> 0°)
         if (config.rotationDegrees > 0.0f) {
             val rotationEffect = ScaleAndRotateTransformation.Builder()
                 .setRotationDegrees(config.rotationDegrees)
@@ -107,5 +108,48 @@ class VideoEncodingEngine(private val context: Context) {
         }
 
         return builder.build()
+    }
+
+    /**
+     * Encodes and compresses Image to JPEG, PNG, or WEBP with scaling & quality options
+     */
+    fun encodeImage(
+        inputUri: Uri,
+        outputFile: File,
+        format: String,
+        quality: Int,
+        targetWidth: Int,
+        targetHeight: Int
+    ): Boolean {
+        var inputStream: InputStream? = null
+        try {
+            inputStream = context.contentResolver.openInputStream(inputUri) ?: return false
+            var bitmap = BitmapFactory.decodeStream(inputStream) ?: return false
+
+            if (targetWidth > 0 && targetHeight > 0) {
+                bitmap = Bitmap.createScaledBitmap(bitmap, targetWidth, targetHeight, true)
+            }
+
+            val compressFormat = when (format.uppercase()) {
+                "PNG" -> Bitmap.CompressFormat.PNG
+                "WEBP" -> if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                    Bitmap.CompressFormat.WEBP_LOSSY
+                } else {
+                    @Suppress("DEPRECATION")
+                    Bitmap.CompressFormat.WEBP
+                }
+                else -> Bitmap.CompressFormat.JPEG
+            }
+
+            FileOutputStream(outputFile).use { out ->
+                bitmap.compress(compressFormat, quality.coerceIn(1, 100), out)
+            }
+            return true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return false
+        } finally {
+            try { inputStream?.close() } catch (_: Exception) {}
+        }
     }
 }

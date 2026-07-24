@@ -5,6 +5,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Environment
@@ -14,13 +15,22 @@ import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MimeTypes
 import androidx.media3.effect.Presentation
 import com.example.videoencoder.engine.EncodingConfig
+import com.example.videoencoder.engine.VideoEncodingEngine
 import com.example.videoencoder.service.EncodingService
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
+
+enum class MediaType(val label: String) {
+    VIDEO("Video"),
+    IMAGE("Gambar"),
+    AUDIO("Audio")
+}
 
 enum class ResolutionPreset(val label: String, val width: Int, val height: Int) {
     DEFAULT("Default (Bawaan Video)", 0, 0),
@@ -50,40 +60,47 @@ enum class StorageLocationOption(val label: String, val subtitle: String) {
     INTERNAL_APP("Internal App", "Penyimpanan Privat Aplikasi")
 }
 
-data class SelectedVideoMetadata(
+data class SelectedMediaItem(
     val uri: Uri,
+    val mediaType: MediaType,
     val fileName: String,
     val sizeBytes: Long,
-    val durationSec: Long,
-    val width: Int,
-    val height: Int
+    val durationSec: Long = 0,
+    val width: Int = 0,
+    val height: Int = 0
 )
 
 data class EncodedFileItem(
     val name: String,
     val path: String,
     val sizeBytes: Long,
-    val lastModifiedMs: Long
+    val lastModifiedMs: Long,
+    val mediaType: MediaType
 )
 
 data class CompressorUiState(
-    val selectedVideo: SelectedVideoMetadata? = null,
+    val selectedMedia: SelectedMediaItem? = null,
     
-    // Video Codec & Hardware Parameters (Default = "DEFAULT" / 0)
-    val outputFormat: String = "DEFAULT",                 // "DEFAULT" or specific codec MIME type
-    val useAutoBitrate: Boolean = true,                     // true = Auto Bitrate (Unset/Default)
-    val targetBitrateMbps: Float = 4.0f,                    // Custom Bitrate if enabled
+    // Video Codec & Hardware Parameters
+    val outputFormat: String = "DEFAULT",
+    val useAutoBitrate: Boolean = true,
+    val targetBitrateMbps: Float = 4.0f,
     val bitrateModeOption: BitrateModeOption = BitrateModeOption.DEFAULT,
     val resolutionPreset: ResolutionPreset = ResolutionPreset.DEFAULT,
     val scaleModeOption: ScaleModeOption = ScaleModeOption.DEFAULT,
-    val frameRate: Int = 0,                                 // 0 = Default FPS
-    val iFrameIntervalSec: Float = 0.0f,                    // 0 = Default Keyframe
-    val rotationDegrees: Float = 0.0f,                      // 0° = Normal
+    val frameRate: Int = 0,
+    val iFrameIntervalSec: Float = 0.0f,
+    val rotationDegrees: Float = 0.0f,
 
     // Audio Parameters
-    val audioFormat: String = "DEFAULT",                    // "DEFAULT" or specific Audio MIME type
-    val audioBitrateKbps: Int = 0,                          // 0 = Default Audio Bitrate
-    val isAudioMuted: Boolean = false,                      // Mute Audio
+    val audioFormat: String = "DEFAULT",
+    val audioBitrateKbps: Int = 0,
+    val isAudioMuted: Boolean = false,
+
+    // Image Encoding Parameters
+    val imageFormat: String = "WEBP",                // "WEBP", "JPEG", "PNG"
+    val imageQuality: Int = 80,                       // 10% - 100%
+    val imageScalePercent: Int = 100,                 // 100% = Original
 
     // Storage Destination
     val storageLocationOption: StorageLocationOption = StorageLocationOption.EXTERNAL_MOVIES,
@@ -115,7 +132,6 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
             encodingService = binder.getService()
             isServiceBound = true
 
-            // Observe service progress
             viewModelScope.launch {
                 encodingService?.progressState?.collect { serviceState ->
                     when (serviceState.status) {
@@ -173,7 +189,6 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     init {
-        // Bind to EncodingService
         val intent = Intent(application, EncodingService::class.java)
         application.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
 
@@ -183,7 +198,6 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
 
     private fun discoverHardwareEncoders() {
         val result = mutableListOf<Pair<String, String>>()
-        // Always include "Default (Bawaan Video / System)" as first option
         result.add("DEFAULT" to "Default (Bawaan System)")
 
         try {
@@ -226,30 +240,39 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
             val context = getApplication<Application>().applicationContext
             val directoriesToScan = mutableListOf<File>()
             
-            // External Movies / DCIM
             val externalPublicDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
             if (externalPublicDir != null && externalPublicDir.exists()) {
                 directoriesToScan.add(externalPublicDir)
             }
 
-            // External App Files Movies
             context.getExternalFilesDir(Environment.DIRECTORY_MOVIES)?.let {
                 if (it.exists()) directoriesToScan.add(it)
             }
 
-            // Internal Files
             directoriesToScan.add(context.filesDir)
 
             val fileMap = mutableMapOf<String, EncodedFileItem>()
             directoriesToScan.forEach { dir ->
                 dir.listFiles()
-                    ?.filter { it.isFile && (it.name.endsWith(".mp4") || it.name.endsWith(".mkv") || it.name.endsWith(".webm")) }
+                    ?.filter { file ->
+                        file.isFile && (
+                            file.name.endsWith(".mp4") || file.name.endsWith(".mkv") || file.name.endsWith(".webm") ||
+                            file.name.endsWith(".jpg") || file.name.endsWith(".jpeg") || file.name.endsWith(".png") || file.name.endsWith(".webp") ||
+                            file.name.endsWith(".m4a") || file.name.endsWith(".aac") || file.name.endsWith(".opus") || file.name.endsWith(".mp3")
+                        )
+                    }
                     ?.forEach { file ->
+                        val mediaType = when {
+                            file.name.endsWith(".jpg") || file.name.endsWith(".jpeg") || file.name.endsWith(".png") || file.name.endsWith(".webp") -> MediaType.IMAGE
+                            file.name.endsWith(".m4a") || file.name.endsWith(".aac") || file.name.endsWith(".opus") || file.name.endsWith(".mp3") -> MediaType.AUDIO
+                            else -> MediaType.VIDEO
+                        }
                         fileMap[file.absolutePath] = EncodedFileItem(
                             name = file.name,
                             path = file.absolutePath,
                             sizeBytes = file.length(),
-                            lastModifiedMs = file.lastModified()
+                            lastModifiedMs = file.lastModified(),
+                            mediaType = mediaType
                         )
                     }
             }
@@ -272,51 +295,119 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
     fun clearSelectedVideo() {
         _uiState.update {
             it.copy(
-                selectedVideo = null,
+                selectedMedia = null,
                 completedOutputPath = null,
                 errorMessage = null
             )
         }
     }
 
-    fun onVideoSelected(uri: Uri) {
+    fun onMediaSelected(uri: Uri, mediaType: MediaType) {
         viewModelScope.launch {
             val context = getApplication<Application>().applicationContext
-            val retriever = MediaMetadataRetriever()
+            var fileName = uri.lastPathSegment ?: "Selected Media"
+            var fileSize = 0L
+
             try {
-                retriever.setDataSource(context, uri)
-                val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
-                val width = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 1920
-                val height = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 1080
-                
-                var fileSize = 0L
                 context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { afd ->
                     fileSize = afd.length
                 }
+            } catch (_: Exception) {}
 
-                val fileName = uri.lastPathSegment ?: "Selected Video"
-                val metadata = SelectedVideoMetadata(
-                    uri = uri,
-                    fileName = fileName,
-                    sizeBytes = fileSize,
-                    durationSec = durationMs / 1000,
-                    width = width,
-                    height = height
-                )
+            when (mediaType) {
+                MediaType.VIDEO -> {
+                    val retriever = MediaMetadataRetriever()
+                    try {
+                        retriever.setDataSource(context, uri)
+                        val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+                        val width = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 1920
+                        val height = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 1080
 
-                _uiState.update { current ->
-                    val updated = current.copy(
-                        selectedVideo = metadata,
-                        completedOutputPath = null,
-                        errorMessage = null
-                    )
-                    updated.copy(estimatedSizeMb = calculateEstimatedSize(updated))
+                        val metadata = SelectedMediaItem(
+                            uri = uri,
+                            mediaType = MediaType.VIDEO,
+                            fileName = fileName,
+                            sizeBytes = fileSize,
+                            durationSec = durationMs / 1000,
+                            width = width,
+                            height = height
+                        )
+                        _uiState.update { current ->
+                            val updated = current.copy(selectedMedia = metadata, completedOutputPath = null, errorMessage = null)
+                            updated.copy(estimatedSizeMb = calculateEstimatedSize(updated))
+                        }
+                    } catch (e: Exception) {
+                        _uiState.update { it.copy(errorMessage = "Gagal membaca metadata video: ${e.localizedMessage}") }
+                    } finally {
+                        try { retriever.release() } catch (_: Exception) {}
+                    }
                 }
-            } catch (e: Exception) {
-                _uiState.update { it.copy(errorMessage = "Failed to parse video metadata: ${e.localizedMessage}") }
-            } finally {
-                try { retriever.release() } catch (_: Exception) {}
+                MediaType.IMAGE -> {
+                    try {
+                        val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                        context.contentResolver.openInputStream(uri)?.use { stream ->
+                            BitmapFactory.decodeStream(stream, null, options)
+                        }
+                        val metadata = SelectedMediaItem(
+                            uri = uri,
+                            mediaType = MediaType.IMAGE,
+                            fileName = fileName,
+                            sizeBytes = fileSize,
+                            width = options.outWidth,
+                            height = options.outHeight
+                        )
+                        _uiState.update { current ->
+                            val updated = current.copy(selectedMedia = metadata, completedOutputPath = null, errorMessage = null)
+                            updated.copy(estimatedSizeMb = calculateEstimatedSize(updated))
+                        }
+                    } catch (e: Exception) {
+                        _uiState.update { it.copy(errorMessage = "Gagal membaca metadata gambar: ${e.localizedMessage}") }
+                    }
+                }
+                MediaType.AUDIO -> {
+                    val retriever = MediaMetadataRetriever()
+                    try {
+                        retriever.setDataSource(context, uri)
+                        val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+                        val metadata = SelectedMediaItem(
+                            uri = uri,
+                            mediaType = MediaType.AUDIO,
+                            fileName = fileName,
+                            sizeBytes = fileSize,
+                            durationSec = durationMs / 1000
+                        )
+                        _uiState.update { current ->
+                            val updated = current.copy(selectedMedia = metadata, completedOutputPath = null, errorMessage = null)
+                            updated.copy(estimatedSizeMb = calculateEstimatedSize(updated))
+                        }
+                    } catch (e: Exception) {
+                        _uiState.update { it.copy(errorMessage = "Gagal membaca metadata audio: ${e.localizedMessage}") }
+                    } finally {
+                        try { retriever.release() } catch (_: Exception) {}
+                    }
+                }
             }
+        }
+    }
+
+    fun setImageFormat(format: String) {
+        _uiState.update { current ->
+            val updated = current.copy(imageFormat = format)
+            updated.copy(estimatedSizeMb = calculateEstimatedSize(updated))
+        }
+    }
+
+    fun setImageQuality(quality: Int) {
+        _uiState.update { current ->
+            val updated = current.copy(imageQuality = quality)
+            updated.copy(estimatedSizeMb = calculateEstimatedSize(updated))
+        }
+    }
+
+    fun setImageScalePercent(percent: Int) {
+        _uiState.update { current ->
+            val updated = current.copy(imageScalePercent = percent)
+            updated.copy(estimatedSizeMb = calculateEstimatedSize(updated))
         }
     }
 
@@ -392,8 +483,7 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
 
     fun startCompression() {
         val state = _uiState.value
-        val video = state.selectedVideo ?: return
-
+        val media = state.selectedMedia ?: return
         val context = getApplication<Application>().applicationContext
 
         val outputDir = if (state.storageLocationOption == StorageLocationOption.EXTERNAL_MOVIES) {
@@ -406,8 +496,76 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
             context.filesDir
         }
 
-        val extension = "mp4"
-        val outputFile = File(outputDir, "compressed_${System.currentTimeMillis()}.$extension")
+        if (media.mediaType == MediaType.IMAGE) {
+            val extension = state.imageFormat.lowercase()
+            val outputFile = File(outputDir, "encoded_${System.currentTimeMillis()}.$extension")
+
+            _uiState.update {
+                it.copy(
+                    isEncoding = true,
+                    encodingProgress = 30,
+                    encodingStatusText = "Pengodean Gambar...",
+                    errorMessage = null
+                )
+            }
+
+            viewModelScope.launch {
+                val engine = VideoEncodingEngine(context)
+                val targetW = if (state.imageScalePercent < 100 && media.width > 0) (media.width * state.imageScalePercent / 100) else 0
+                val targetH = if (state.imageScalePercent < 100 && media.height > 0) (media.height * state.imageScalePercent / 100) else 0
+
+                val success = withContext(Dispatchers.IO) {
+                    engine.encodeImage(
+                        inputUri = media.uri,
+                        outputFile = outputFile,
+                        format = state.imageFormat,
+                        quality = state.imageQuality,
+                        targetWidth = targetW,
+                        targetHeight = targetH
+                    )
+                }
+
+                if (success) {
+                    try {
+                        android.media.MediaScannerConnection.scanFile(
+                            context,
+                            arrayOf(outputFile.absolutePath),
+                            null,
+                            null
+                        )
+                    } catch (_: Exception) {}
+
+                    _uiState.update {
+                        it.copy(
+                            isEncoding = false,
+                            encodingProgress = 100,
+                            encodingStatusText = "Selesai!",
+                            completedOutputPath = outputFile.absolutePath
+                        )
+                    }
+                    refreshEncodedHistory()
+                } else {
+                    _uiState.update {
+                        it.copy(
+                            isEncoding = false,
+                            encodingProgress = 0,
+                            errorMessage = "Gagal memproses pengodean gambar."
+                        )
+                    }
+                }
+            }
+            return
+        }
+
+        val extension = if (media.mediaType == MediaType.AUDIO) {
+            when (state.audioFormat) {
+                MimeTypes.AUDIO_OPUS -> "opus"
+                MimeTypes.AUDIO_AMR_WB -> "3gp"
+                else -> "m4a"
+            }
+        } else "mp4"
+
+        val outputFile = File(outputDir, "encoded_${System.currentTimeMillis()}.$extension")
 
         val targetWidth = if (state.resolutionPreset == ResolutionPreset.DEFAULT) 0 else state.resolutionPreset.width
         val targetHeight = if (state.resolutionPreset == ResolutionPreset.DEFAULT) 0 else state.resolutionPreset.height
@@ -417,7 +575,7 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
 
         val serviceIntent = Intent(context, EncodingService::class.java).apply {
             action = EncodingService.ACTION_START
-            putExtra(EncodingService.EXTRA_INPUT_URI, video.uri.toString())
+            putExtra(EncodingService.EXTRA_INPUT_URI, media.uri.toString())
             putExtra(EncodingService.EXTRA_OUTPUT_PATH, outputFile.absolutePath)
             putExtra(EncodingService.EXTRA_VIDEO_FORMAT, state.outputFormat)
             putExtra(EncodingService.EXTRA_BITRATE, bitrateBps)
@@ -449,12 +607,17 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     private fun calculateEstimatedSize(state: CompressorUiState): Float {
-        val video = state.selectedVideo ?: return 0.0f
-        val videoBitrateBps = if (state.useAutoBitrate) (video.sizeBytes * 8f / video.durationSec.coerceAtLeast(1)) * 0.7f else state.targetBitrateMbps * 1_000_000f
+        val media = state.selectedMedia ?: return 0.0f
+        if (media.mediaType == MediaType.IMAGE) {
+            val scaleFactor = (state.imageScalePercent / 100f) * (state.imageScalePercent / 100f)
+            val qualityFactor = state.imageQuality / 100f
+            val rawEst = media.sizeBytes * scaleFactor * qualityFactor
+            return (rawEst / 1_000_000f).coerceAtLeast(0.01f)
+        }
+        val videoBitrateBps = if (media.mediaType == MediaType.AUDIO) 0f else (if (state.useAutoBitrate) (media.sizeBytes * 8f / media.durationSec.coerceAtLeast(1)) * 0.7f else state.targetBitrateMbps * 1_000_000f)
         val audioBitrateBps = if (state.isAudioMuted) 0f else (if (state.audioBitrateKbps == 0) 128_000f else state.audioBitrateKbps * 1000f)
         val totalBitrateBps = videoBitrateBps + audioBitrateBps
-        // Est Size (MB) = (Total Bitrate (bps) / 8 * Duration (s)) / 1,000,000
-        return (totalBitrateBps / 8.0f * video.durationSec) / 1_000_000f
+        return (totalBitrateBps / 8.0f * media.durationSec) / 1_000_000f
     }
 
     override fun onCleared() {
