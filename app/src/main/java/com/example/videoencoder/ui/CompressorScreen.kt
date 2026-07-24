@@ -234,8 +234,8 @@ fun MainScreenView(
                                 },
                                 icon = { Icon(Icons.Default.Image, contentDescription = null) },
                                 text = { Text("Gambar", fontWeight = FontWeight.Bold) },
-                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                                 shape = RoundedCornerShape(20.dp),
                                 elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)
                             )
@@ -248,8 +248,8 @@ fun MainScreenView(
                                 },
                                 icon = { Icon(Icons.Default.Audiotrack, contentDescription = null) },
                                 text = { Text("Audio", fontWeight = FontWeight.Bold) },
-                                containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                                 shape = RoundedCornerShape(20.dp),
                                 elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)
                             )
