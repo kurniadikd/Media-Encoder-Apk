@@ -150,6 +150,7 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
 
     private var encodingService: EncodingService? = null
     private var isServiceBound = false
+    private var encodingStartTimeMs: Long = 0L
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
@@ -162,11 +163,26 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                 encodingService?.progressState?.collect { serviceState ->
                     when (serviceState.status) {
                         EncodingService.EncodingStatus.RUNNING -> {
+                            val currentProgress = serviceState.progressPercent
+                            val totalEstMb = _uiState.value.estimatedSizeMb
+                            val currentMb = totalEstMb * (currentProgress / 100.0f)
+                            val sizeText = String.format(Locale.US, "%.1f MB / %.1f MB", currentMb, totalEstMb)
+
+                            val elapsedMs = System.currentTimeMillis() - encodingStartTimeMs
+                            val timeText = if (currentProgress > 3 && elapsedMs > 500) {
+                                val totalEstMs = (elapsedMs.toFloat() / (currentProgress / 100.0f)).toLong()
+                                val remainingMs = (totalEstMs - elapsedMs).coerceAtLeast(0L)
+                                val remainingSec = Math.round(remainingMs / 1000.0f)
+                                "Sisa ~${remainingSec}s"
+                            } else {
+                                "Menghitung sisa waktu..."
+                            }
+
                             _uiState.update {
                                 it.copy(
                                     isEncoding = true,
-                                    encodingProgress = serviceState.progressPercent,
-                                    encodingStatusText = "Proses Hardware Encoding... ${serviceState.progressPercent}%",
+                                    encodingProgress = currentProgress,
+                                    encodingStatusText = "$sizeText • $timeText",
                                     errorMessage = null
                                 )
                             }
@@ -611,6 +627,9 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
         }
 
         addLog("Memulai pengodean untuk berkas: ${media.fileName}", LogLevel.INFO, "ENCODER")
+        encodingStartTimeMs = System.currentTimeMillis()
+
+        val initialSizeText = String.format(Locale.US, "0.0 MB / %.1f MB", state.estimatedSizeMb)
 
         // Switch to MAIN screen immediately (0ms lag!)
         _uiState.update {
@@ -619,7 +638,7 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                 isEncoding = true,
                 encodingProgress = 0,
                 activeEncodingFileName = media.fileName,
-                encodingStatusText = "Memulai Hardware Encoding..."
+                encodingStatusText = "$initialSizeText • Menyiapkan..."
             )
         }
 
