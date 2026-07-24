@@ -639,11 +639,12 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
         val context = getApplication<Application>().applicationContext
 
         val outputDir = if (state.storageLocationOption == StorageLocationOption.EXTERNAL_MOVIES) {
-            val publicDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
-            if (publicDir != null && !publicDir.exists()) {
-                publicDir.mkdirs()
+            val basePublic = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
+            val mediaEncoderFolder = File(basePublic, "Media Encoder")
+            if (!mediaEncoderFolder.exists()) {
+                mediaEncoderFolder.mkdirs()
             }
-            publicDir ?: (context.getExternalFilesDir(Environment.DIRECTORY_MOVIES) ?: context.filesDir)
+            if (mediaEncoderFolder.exists()) mediaEncoderFolder else basePublic
         } else {
             context.filesDir
         }
@@ -700,7 +701,7 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                             }
                             put(android.provider.MediaStore.MediaColumns.MIME_TYPE, mime)
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                                put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/Media Encoder")
+                                put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, "${Environment.DIRECTORY_MOVIES}/Media Encoder")
                                 put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0)
                             }
                         }
