@@ -1,77 +1,72 @@
 package com.example.videoencoder.ui.theme
 
 import android.app.Activity
-import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
-private val DarkColorScheme = darkColorScheme(
-    primary = Color(0xFFA8C7FF),
-    onPrimary = Color(0xFF003062),
-    primaryContainer = Color(0xFF004689),
-    onPrimaryContainer = Color(0xFFD6E3FF),
-    secondary = Color(0xFF70DBB8),
-    onSecondary = Color(0xFF00382B),
-    secondaryContainer = Color(0xFF00513F),
-    onSecondaryContainer = Color(0xFF8DF7D4),
-    tertiary = Color(0xFFFFB3AC),
-    onTertiary = Color(0xFF680007),
-    tertiaryContainer = Color(0xFF8B0E14),
-    onTertiaryContainer = Color(0xFFFFDAD6),
-    background = Color(0xFF0F141C),
-    onBackground = Color(0xFFE1E2EC),
-    surface = Color(0xFF1B202A),
-    onSurface = Color(0xFFE1E2EC),
-    surfaceVariant = Color(0xFF2E3544),
-    onSurfaceVariant = Color(0xFFC3C6CF)
+// Rich Vibrant Dark Color Scheme
+private val VibrantDarkColorScheme = darkColorScheme(
+    primary = Color(0xFF818CF8),             // Neon Indigo
+    onPrimary = Color(0xFF1E1B4B),
+    primaryContainer = Color(0xFF3730A3),
+    onPrimaryContainer = Color(0xFFE0E7FF),
+    secondary = Color(0xFF22D3EE),           // Electric Cyan
+    onSecondary = Color(0xFF083344),
+    secondaryContainer = Color(0xFF164E63),
+    onSecondaryContainer = Color(0xFFCFFAFE),
+    tertiary = Color(0xFFF472B6),            // Radiant Pink
+    onTertiary = Color(0xFF500724),
+    tertiaryContainer = Color(0xFF831843),
+    onTertiaryContainer = Color(0xFFFCE7F3),
+    background = Color(0xFF0F172A),          // Sleek Slate Background
+    onBackground = Color(0xFFF8FAFC),
+    surface = Color(0xFF1E293B),             // Surface Glass Variant
+    onSurface = Color(0xFFF8FAFC),
+    surfaceVariant = Color(0xFF334155),
+    onSurfaceVariant = Color(0xFFCBD5E1),
+    outline = Color(0xFF64748B),
+    outlineVariant = Color(0xFF475569)
 )
 
-private val LightColorScheme = lightColorScheme(
-    primary = Color(0xFF005CBA),
+// Rich Vibrant Light Color Scheme
+private val VibrantLightColorScheme = lightColorScheme(
+    primary = Color(0xFF4F46E5),             // Deep Electric Indigo
     onPrimary = Color(0xFFFFFFFF),
-    primaryContainer = Color(0xFFD6E3FF),
-    onPrimaryContainer = Color(0xFF001B3E),
-    secondary = Color(0xFF006B54),
+    primaryContainer = Color(0xFFE0E7FF),
+    onPrimaryContainer = Color(0xFF1E1B4B),
+    secondary = Color(0xFF0891B2),           // Deep Cyan
     onSecondary = Color(0xFFFFFFFF),
-    secondaryContainer = Color(0xFF8DF7D4),
-    onSecondaryContainer = Color(0xFF002117),
-    tertiary = Color(0xFFAF2B28),
+    secondaryContainer = Color(0xFFCFFAFE),
+    onSecondaryContainer = Color(0xFF083344),
+    tertiary = Color(0xFFDB2777),            // Deep Pink
     onTertiary = Color(0xFFFFFFFF),
-    tertiaryContainer = Color(0xFFFFDAD6),
-    onTertiaryContainer = Color(0xFF410003),
-    background = Color(0xFFF7F9FF),
-    onBackground = Color(0xFF181C22),
-    surface = Color(0xFFEDF0F9),
-    onSurface = Color(0xFF181C22),
-    surfaceVariant = Color(0xFFDFE2EC),
-    onSurfaceVariant = Color(0xFF43474E)
+    tertiaryContainer = Color(0xFFFCE7F3),
+    onTertiaryContainer = Color(0xFF500724),
+    background = Color(0xFFF8FAFC),
+    onBackground = Color(0xFF0F172A),
+    surface = Color(0xFFF1F5F9),
+    onSurface = Color(0xFF0F172A),
+    surfaceVariant = Color(0xFFE2E8F0),
+    onSurfaceVariant = Color(0xFF475569),
+    outline = Color(0xFF94A3B8),
+    outlineVariant = Color(0xFFCBD5E1)
 )
 
 @Composable
 fun VideoEncoderTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = true,
+    dynamicColor: Boolean = false, // Forced false for consistent custom Vibrant theme!
     content: @Composable () -> Unit
 ) {
-    val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        }
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
-    }
+    val colorScheme = if (darkTheme) VibrantDarkColorScheme else VibrantLightColorScheme
 
     val view = LocalView.current
     if (!view.isInEditMode) {

@@ -34,11 +34,13 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -46,7 +48,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -71,6 +72,7 @@ import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonColors
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -83,12 +85,12 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FloatingActionButtonDefaults
-import androidx.compose.material3.LargeFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonColors
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.LargeFloatingActionButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedTextField
@@ -111,6 +113,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
@@ -130,6 +133,193 @@ import java.util.Locale
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
+
+// Native Material 3 Expressive Button Composables with Dynamic Shape Morphing & Spring Physics!
+
+@Composable
+fun M3ExpressiveButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    shape: Shape = CircleShape,
+    pressedShape: Shape = RoundedCornerShape(12.dp),
+    colors: ButtonColors = ButtonDefaults.buttonColors(),
+    content: @Composable RowScope.() -> Unit
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    val animatedScale by animateFloatAsState(
+        targetValue = if (isPressed) 0.93f else 1.0f,
+        animationSpec = spring(
+            stiffness = Spring.StiffnessMediumLow,
+            dampingRatio = Spring.DampingRatioMediumBouncy
+        ),
+        label = "expressive_button_scale"
+    )
+
+    val currentShape = if (isPressed) pressedShape else shape
+
+    Button(
+        onClick = onClick,
+        modifier = modifier.graphicsLayer {
+            scaleX = animatedScale
+            scaleY = animatedScale
+        },
+        enabled = enabled,
+        shape = currentShape,
+        colors = colors,
+        interactionSource = interactionSource,
+        content = content
+    )
+}
+
+@Composable
+fun M3ExpressiveFilledTonalButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    shape: Shape = CircleShape,
+    pressedShape: Shape = RoundedCornerShape(12.dp),
+    colors: ButtonColors = ButtonDefaults.filledTonalButtonColors(),
+    content: @Composable RowScope.() -> Unit
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    val animatedScale by animateFloatAsState(
+        targetValue = if (isPressed) 0.93f else 1.0f,
+        animationSpec = spring(
+            stiffness = Spring.StiffnessMediumLow,
+            dampingRatio = Spring.DampingRatioMediumBouncy
+        ),
+        label = "expressive_tonal_scale"
+    )
+
+    val currentShape = if (isPressed) pressedShape else shape
+
+    FilledTonalButton(
+        onClick = onClick,
+        modifier = modifier.graphicsLayer {
+            scaleX = animatedScale
+            scaleY = animatedScale
+        },
+        enabled = enabled,
+        shape = currentShape,
+        colors = colors,
+        interactionSource = interactionSource,
+        content = content
+    )
+}
+
+@Composable
+fun M3ExpressiveFilledTonalIconButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    shape: Shape = CircleShape,
+    pressedShape: Shape = RoundedCornerShape(12.dp),
+    colors: IconButtonColors = IconButtonDefaults.filledTonalIconButtonColors(),
+    content: @Composable () -> Unit
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    val animatedScale by animateFloatAsState(
+        targetValue = if (isPressed) 0.90f else 1.0f,
+        animationSpec = spring(
+            stiffness = Spring.StiffnessMediumLow,
+            dampingRatio = Spring.DampingRatioMediumBouncy
+        ),
+        label = "expressive_tonal_icon_scale"
+    )
+
+    val currentShape = if (isPressed) pressedShape else shape
+
+    FilledTonalIconButton(
+        onClick = onClick,
+        modifier = modifier.graphicsLayer {
+            scaleX = animatedScale
+            scaleY = animatedScale
+        },
+        enabled = enabled,
+        shape = currentShape,
+        colors = colors,
+        interactionSource = interactionSource,
+        content = content
+    )
+}
+
+@Composable
+fun M3ExpressiveIconButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    colors: IconButtonColors = IconButtonDefaults.iconButtonColors(),
+    content: @Composable () -> Unit
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    val animatedScale by animateFloatAsState(
+        targetValue = if (isPressed) 0.88f else 1.0f,
+        animationSpec = spring(
+            stiffness = Spring.StiffnessMediumLow,
+            dampingRatio = Spring.DampingRatioMediumBouncy
+        ),
+        label = "expressive_icon_scale"
+    )
+
+    IconButton(
+        onClick = onClick,
+        modifier = modifier.graphicsLayer {
+            scaleX = animatedScale
+            scaleY = animatedScale
+        },
+        enabled = enabled,
+        colors = colors,
+        interactionSource = interactionSource,
+        content = content
+    )
+}
+
+@Composable
+fun M3ExpressiveLargeFAB(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    shape: Shape = CircleShape,
+    pressedShape: Shape = RoundedCornerShape(18.dp),
+    containerColor: Color = MaterialTheme.colorScheme.secondaryContainer,
+    contentColor: Color = MaterialTheme.colorScheme.onSecondaryContainer,
+    content: @Composable () -> Unit
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    val animatedScale by animateFloatAsState(
+        targetValue = if (isPressed) 0.92f else 1.0f,
+        animationSpec = spring(
+            stiffness = Spring.StiffnessMediumLow,
+            dampingRatio = Spring.DampingRatioMediumBouncy
+        ),
+        label = "expressive_fab_scale"
+    )
+
+    val currentShape = if (isPressed) pressedShape else shape
+
+    LargeFloatingActionButton(
+        onClick = onClick,
+        modifier = modifier.graphicsLayer {
+            scaleX = animatedScale
+            scaleY = animatedScale
+        },
+        shape = currentShape,
+        containerColor = containerColor,
+        contentColor = contentColor,
+        interactionSource = interactionSource,
+        content = content
+    )
+}
 
 @Composable
 fun CompressorScreen(
@@ -232,7 +422,7 @@ fun MainScreenView(
                     },
                     actions = {
                         // Native M3 Expressive Log Action Button
-                        FilledTonalIconButton(
+                        M3ExpressiveFilledTonalIconButton(
                             onClick = { viewModel.navigateToLogsScreen() },
                             shape = CircleShape
                         ) {
@@ -390,7 +580,7 @@ fun MainScreenView(
             )
         }
 
-        // 3. Native M3 Speed Dial FAB Menu Overlay with Proven Dynamic System Navigation Bar Safety!
+        // 3. Native M3 Speed Dial FAB Menu Overlay with Dynamic System Navigation Bar Safety!
         val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
         val fabBottomPadding = if (navBarBottom > 0.dp) navBarBottom + 20.dp else 36.dp
 
@@ -413,7 +603,7 @@ fun MainScreenView(
                         horizontalAlignment = Alignment.End,
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        // 1. Video SAF (Supports MP4, AVI, WMV, MKV, FLV, MOV, TS, WebM, 3GP, etc.)
+                        // 1. Video SAF
                         ExtendedFloatingActionButton(
                             onClick = {
                                 isFabMenuExpanded = false
@@ -457,12 +647,11 @@ fun MainScreenView(
                     }
                 }
 
-                // Main Large FAB Button with Native M3 Icon Morphing Rotation & Secondary Color Scheme
-                LargeFloatingActionButton(
+                // Main Large FAB Button with Native M3 Shape Morphing & Bouncy Spring Physics!
+                M3ExpressiveLargeFAB(
                     onClick = { isFabMenuExpanded = !isFabMenuExpanded },
                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                    shape = CircleShape
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
                 ) {
                     Icon(
                         imageVector = Icons.Default.Add,
@@ -496,7 +685,7 @@ fun PreprocessScreenView(
         topBar = {
             TopAppBar(
                 navigationIcon = {
-                    IconButton(onClick = { viewModel.navigateToMainScreen() }) {
+                    M3ExpressiveIconButton(onClick = { viewModel.navigateToMainScreen() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Kembali")
                     }
                 },
@@ -507,7 +696,7 @@ fun PreprocessScreenView(
                     )
                 },
                 actions = {
-                    FilledTonalIconButton(
+                    M3ExpressiveFilledTonalIconButton(
                         onClick = { viewModel.navigateToLogsScreen() },
                         shape = CircleShape
                     ) {
@@ -541,9 +730,9 @@ fun PreprocessScreenView(
                         )
                     }
 
-                    Button(
+                    // Native M3 Expressive Action Button with Shape Morphing & Spring Physics
+                    M3ExpressiveButton(
                         onClick = { viewModel.startCompression() },
-                        shape = RoundedCornerShape(20.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                     ) {
                         Icon(Icons.Default.PlayArrow, contentDescription = null)
@@ -833,7 +1022,7 @@ fun LogsScreenView(
         topBar = {
             TopAppBar(
                 navigationIcon = {
-                    IconButton(onClick = { viewModel.navigateToMainScreen() }) {
+                    M3ExpressiveIconButton(onClick = { viewModel.navigateToMainScreen() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Kembali")
                     }
                 },
@@ -845,7 +1034,7 @@ fun LogsScreenView(
                 },
                 actions = {
                     // Native M3 Expressive Copy Logs Button
-                    FilledTonalButton(
+                    M3ExpressiveFilledTonalButton(
                         onClick = {
                             val allLogsText = uiState.logList.joinToString("\n") { log ->
                                 "[${log.timestamp}] [${log.level}] [${log.tag}] ${log.message}"
@@ -853,7 +1042,6 @@ fun LogsScreenView(
                             clipboardManager.setText(AnnotatedString(allLogsText))
                             Toast.makeText(context, "Seluruh log disalin ke klipboard!", Toast.LENGTH_SHORT).show()
                         },
-                        shape = RoundedCornerShape(16.dp),
                         modifier = Modifier.padding(end = 6.dp)
                     ) {
                         Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -861,8 +1049,8 @@ fun LogsScreenView(
                         Text("Salin Log", fontWeight = FontWeight.Bold)
                     }
 
-                    // Native M3 Clear Logs Button
-                    IconButton(onClick = { viewModel.clearLogs() }) {
+                    // Native M3 Expressive Clear Logs Button
+                    M3ExpressiveIconButton(onClick = { viewModel.clearLogs() }) {
                         Icon(Icons.Default.Delete, contentDescription = "Bersihkan Log")
                     }
                 },
@@ -1172,9 +1360,8 @@ fun ActiveEncodingCardItem(
                 }
             }
 
-            FilledTonalIconButton(
+            M3ExpressiveFilledTonalIconButton(
                 onClick = onCancel,
-                shape = CircleShape,
                 colors = IconButtonDefaults.filledTonalIconButtonColors(
                     containerColor = MaterialTheme.colorScheme.errorContainer,
                     contentColor = MaterialTheme.colorScheme.onErrorContainer
@@ -1358,13 +1545,13 @@ fun EncodedHistoryCardItem(
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                FilledTonalIconButton(onClick = onPlay, shape = CircleShape) {
+                M3ExpressiveFilledTonalIconButton(onClick = onPlay) {
                     Icon(Icons.Default.PlayArrow, contentDescription = "Play/View")
                 }
-                FilledTonalIconButton(onClick = onShare, shape = CircleShape) {
+                M3ExpressiveFilledTonalIconButton(onClick = onShare) {
                     Icon(Icons.Default.Share, contentDescription = "Share")
                 }
-                FilledTonalIconButton(onClick = onDelete, shape = CircleShape) {
+                M3ExpressiveFilledTonalIconButton(onClick = onDelete) {
                     Icon(Icons.Default.Delete, contentDescription = "Delete")
                 }
             }
