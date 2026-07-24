@@ -272,8 +272,27 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
             val codecList = android.media.MediaCodecList(android.media.MediaCodecList.REGULAR_CODECS)
             for (info in codecList.codecInfos) {
                 if (!info.isEncoder) continue
+
+                val isHw = if (Build.VERSION.SDK_INT >= 29) {
+                    info.isHardwareAccelerated
+                } else {
+                    !info.name.lowercase().contains("google") && !info.name.lowercase().contains("sw")
+                }
+
+                val hwBadge = if (isHw) "[HW Accelerate]" else "[SW Fallback]"
+
                 for (type in info.supportedTypes) {
                     if (type.startsWith("video/")) {
+                        var extraCaps = ""
+                        try {
+                            val caps = info.getCapabilitiesForType(type)
+                            val supports10Bit = caps.profileLevels.any {
+                                it.profile == android.media.MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10 ||
+                                it.profile == android.media.MediaCodecInfo.CodecProfileLevel.VP9Profile2
+                            }
+                            if (supports10Bit) extraCaps += " • 10-bit HDR"
+                        } catch (_: Exception) {}
+
                         val label = when (type) {
                             MimeTypes.VIDEO_H265 -> "HEVC (H.265)"
                             MimeTypes.VIDEO_H264 -> "AVC (H.264)"
@@ -286,12 +305,15 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                         }
                         val nameClean = info.name.replace("OMX.", "").replace("c2.", "")
                         if (!result.any { it.first == type }) {
-                            result.add(type to "$label ($nameClean)")
+                            result.add(type to "$label $hwBadge ($nameClean$extraCaps)")
+                            addLog("Hardware Codec: $type ($nameClean) $hwBadge$extraCaps", LogLevel.INFO, "CODEC")
                         }
                     }
                 }
             }
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            addLog("Pemeriksaan Codec Gagal: ${e.localizedMessage}", LogLevel.WARNING, "CODEC")
+        }
 
         if (result.size <= 1) {
             result.add(MimeTypes.VIDEO_H265 to "HEVC (H.265)")
@@ -665,6 +687,25 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                 if (success) {
                     addLog("Pengodean gambar selesai: ${outputFile.name}", LogLevel.SUCCESS, "IMAGE")
                     try {
+                        val resolver = context.contentResolver
+                        val contentValues = android.content.ContentValues().apply {
+                            put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, outputFile.name)
+                            put(android.provider.MediaStore.MediaColumns.SIZE, outputFile.length())
+                            put(android.provider.MediaStore.MediaColumns.DATE_ADDED, System.currentTimeMillis() / 1000)
+                            put(android.provider.MediaStore.MediaColumns.DATE_MODIFIED, System.currentTimeMillis() / 1000)
+                            val mime = when {
+                                outputFile.name.endsWith(".webp") -> "image/webp"
+                                outputFile.name.endsWith(".png") -> "image/png"
+                                else -> "image/jpeg"
+                            }
+                            put(android.provider.MediaStore.MediaColumns.MIME_TYPE, mime)
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/Media Encoder")
+                                put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0)
+                            }
+                        }
+                        resolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+
                         android.media.MediaScannerConnection.scanFile(
                             context,
                             arrayOf(outputFile.absolutePath),
