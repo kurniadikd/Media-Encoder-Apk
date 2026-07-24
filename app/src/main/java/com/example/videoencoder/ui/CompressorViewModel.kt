@@ -112,6 +112,7 @@ data class CompressorUiState(
     val outputFormat: String = "DEFAULT",
     val useAutoBitrate: Boolean = true,
     val targetBitrateMbps: Float = 4.0f,
+    val quantizationParameterQP: Int = 23,
     val bitrateModeOption: BitrateModeOption = BitrateModeOption.DEFAULT,
     val resolutionPreset: ResolutionPreset = ResolutionPreset.DEFAULT,
     val scaleModeOption: ScaleModeOption = ScaleModeOption.DEFAULT,
@@ -652,13 +653,23 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
 
     fun setTargetBitrate(bitrateMbps: Float) {
         _uiState.update { current ->
-            val updated = current.copy(useAutoBitrate = false, targetBitrateMbps = bitrateMbps)
+            val updated = current.copy(useAutoBitrate = false, targetBitrateMbps = bitrateMbps.coerceIn(0.1f, 50.0f))
+            updated.copy(estimatedSizeMb = calculateEstimatedSize(updated))
+        }
+    }
+
+    fun setQuantizationParameterQP(qp: Int) {
+        _uiState.update { current ->
+            val updated = current.copy(useAutoBitrate = false, quantizationParameterQP = qp.coerceIn(1, 51))
             updated.copy(estimatedSizeMb = calculateEstimatedSize(updated))
         }
     }
 
     fun setBitrateModeOption(option: BitrateModeOption) {
-        _uiState.update { it.copy(bitrateModeOption = option) }
+        _uiState.update { current ->
+            val updated = current.copy(bitrateModeOption = option)
+            updated.copy(estimatedSizeMb = calculateEstimatedSize(updated))
+        }
     }
 
     fun setResolutionPreset(preset: ResolutionPreset) {
@@ -880,7 +891,16 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
             val rawEst = media.sizeBytes * scaleFactor * qualityFactor
             return (rawEst / 1_000_000f).coerceAtLeast(0.01f)
         }
-        val videoBitrateBps = if (media.mediaType == MediaType.AUDIO) 0f else (if (state.useAutoBitrate) (media.sizeBytes * 8f / media.durationSec.coerceAtLeast(1)) * 0.7f else state.targetBitrateMbps * 1_000_000f)
+        val videoBitrateBps = if (media.mediaType == MediaType.AUDIO) 0f else {
+            if (state.useAutoBitrate) {
+                (media.sizeBytes * 8f / media.durationSec.coerceAtLeast(1)) * 0.7f
+            } else if (state.bitrateModeOption == BitrateModeOption.CQ) {
+                val qpEstMbps = (30.0 * Math.pow(0.88, ((state.quantizationParameterQP - 12) / 3.0))).toFloat().coerceIn(0.1f, 50.0f)
+                qpEstMbps * 1_000_000f
+            } else {
+                state.targetBitrateMbps * 1_000_000f
+            }
+        }
         val audioBitrateBps = if (state.isAudioMuted) 0f else (if (state.audioBitrateKbps == 0) 128_000f else state.audioBitrateKbps * 1000f)
         val totalBitrateBps = videoBitrateBps + audioBitrateBps
         return (totalBitrateBps / 8.0f * media.durationSec) / 1_000_000f

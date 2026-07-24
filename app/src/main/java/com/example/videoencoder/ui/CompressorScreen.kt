@@ -981,16 +981,31 @@ fun PreprocessScreenView(
                         onOptionSelected = { index -> viewModel.setResolutionPreset(resOptions[index]) }
                     )
 
-                    // 3. Target Bitrate Slider & Auto Option
+                    // 3. Adaptive Bitrate / QP Slider & Auto Option
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        val isCQMode = uiState.bitrateModeOption == BitrateModeOption.CQ
+
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("Target Video Bitrate", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold))
                             Text(
-                                text = if (uiState.useAutoBitrate) "Default (Auto System)" else String.format(Locale.US, "%.1f Mbps", uiState.targetBitrateMbps),
+                                text = if (isCQMode) "Quantizer QP (Faktor Kualitas)" else "Target Video Bitrate",
+                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+                            )
+                            Text(
+                                text = if (uiState.useAutoBitrate) {
+                                    "Default (Auto System)"
+                                } else if (isCQMode) {
+                                    "QP ${uiState.quantizationParameterQP} (${if (uiState.quantizationParameterQP <= 18) "Tinggi" else if (uiState.quantizationParameterQP <= 28) "Seimbang" else "Kompresi High"})"
+                                } else {
+                                    if (uiState.targetBitrateMbps < 1.0f) {
+                                        String.format(Locale.US, "%.1f Mbps (%d kbps)", uiState.targetBitrateMbps, (uiState.targetBitrateMbps * 1000).toInt())
+                                    } else {
+                                        String.format(Locale.US, "%.1f Mbps", uiState.targetBitrateMbps)
+                                    }
+                                },
                                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                                 color = MaterialTheme.colorScheme.primary
                             )
@@ -1010,22 +1025,36 @@ fun PreprocessScreenView(
                             M3ExpressiveFilterChip(
                                 selected = !uiState.useAutoBitrate,
                                 onClick = { viewModel.setUseAutoBitrate(false) },
-                                label = { Text("Custom Bitrate Slider") }
+                                label = { Text(if (isCQMode) "Custom QP Slider" else "Custom Bitrate Slider") }
                             )
                         }
 
                         if (!uiState.useAutoBitrate) {
-                            Slider(
-                                value = uiState.targetBitrateMbps,
-                                onValueChange = { viewModel.setTargetBitrate(it) },
-                                valueRange = 1.0f..30.0f,
-                                steps = 57,
-                                colors = SliderDefaults.colors(
-                                    thumbColor = MaterialTheme.colorScheme.primary,
-                                    activeTrackColor = MaterialTheme.colorScheme.primary,
-                                    inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
+                            if (isCQMode) {
+                                Slider(
+                                    value = uiState.quantizationParameterQP.toFloat(),
+                                    onValueChange = { viewModel.setQuantizationParameterQP(it.toInt()) },
+                                    valueRange = 1.0f..51.0f,
+                                    steps = 49,
+                                    colors = SliderDefaults.colors(
+                                        thumbColor = MaterialTheme.colorScheme.primary,
+                                        activeTrackColor = MaterialTheme.colorScheme.primary,
+                                        inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
+                                    )
                                 )
-                            )
+                            } else {
+                                Slider(
+                                    value = uiState.targetBitrateMbps,
+                                    onValueChange = { viewModel.setTargetBitrate(it) },
+                                    valueRange = 0.1f..50.0f,
+                                    steps = 498,
+                                    colors = SliderDefaults.colors(
+                                        thumbColor = MaterialTheme.colorScheme.primary,
+                                        activeTrackColor = MaterialTheme.colorScheme.primary,
+                                        inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
+                                    )
+                                )
+                            }
                         }
                     }
 
