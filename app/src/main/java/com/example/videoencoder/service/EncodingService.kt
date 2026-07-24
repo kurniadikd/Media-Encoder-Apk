@@ -51,6 +51,7 @@ class EncodingService : Service() {
 
     private var activeTransformer: Transformer? = null
     private var progressJob: Job? = null
+    private var wakeLock: android.os.PowerManager.WakeLock? = null
 
     private val _progressState = MutableStateFlow(ServiceProgressState())
     val progressState: StateFlow<ServiceProgressState> = _progressState.asStateFlow()
@@ -120,6 +121,13 @@ class EncodingService : Service() {
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
+
+        try {
+            val powerManager = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+            wakeLock = powerManager.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "MediaEncoder:EncodingWakeLock").apply {
+                acquire(3 * 60 * 60 * 1000L)
+            }
+        } catch (_: Exception) {}
 
         _progressState.value = ServiceProgressState(status = EncodingStatus.RUNNING, progressPercent = 0)
 
@@ -228,6 +236,13 @@ class EncodingService : Service() {
     }
 
     private fun clearNotificationAndStop() {
+        try {
+            if (wakeLock?.isHeld == true) {
+                wakeLock?.release()
+            }
+            wakeLock = null
+        } catch (_: Exception) {}
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             stopForeground(STOP_FOREGROUND_REMOVE)
         } else {

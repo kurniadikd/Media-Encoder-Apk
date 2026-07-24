@@ -878,8 +878,14 @@ fun PreprocessScreenView(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(media.fileName, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), maxLines = 1, overflow = TextOverflow.Ellipsis)
                         val sizeStr = String.format(Locale.US, "%.1f MB", media.sizeBytes / 1_000_000f)
+                        val extraDetails = buildString {
+                            if (media.width > 0) append("${media.width}x${media.height}") else append("${media.durationSec}s")
+                            if (media.fps > 0f) append(" • ${media.fps.toInt()} FPS")
+                            if (media.audioChannels > 0) append(" • ${if (media.audioChannels == 2) "Stereo" else if (media.audioChannels == 1) "Mono" else "${media.audioChannels} Ch"}")
+                            if (!media.colorStandard.isNullOrBlank()) append(" • ${media.colorStandard}")
+                        }
                         Text(
-                            text = if (media.width > 0) "$sizeStr • ${media.width}x${media.height}" else "$sizeStr • ${media.durationSec}s",
+                            text = "$sizeStr • $extraDetails",
                             style = MaterialTheme.typography.bodySmall
                         )
                     }

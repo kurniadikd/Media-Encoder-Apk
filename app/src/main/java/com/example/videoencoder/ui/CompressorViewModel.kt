@@ -86,7 +86,10 @@ data class SelectedMediaItem(
     val sizeBytes: Long,
     val durationSec: Long = 0,
     val width: Int = 0,
-    val height: Int = 0
+    val height: Int = 0,
+    val fps: Float = 0f,
+    val audioChannels: Int = 0,
+    val colorStandard: String? = null
 )
 
 data class EncodedFileItem(
@@ -242,6 +245,7 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
         val intent = Intent(application, EncodingService::class.java)
         application.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
 
+        checkMediaPerformanceClass()
         discoverHardwareEncoders()
         refreshEncodedHistory()
     }
@@ -324,6 +328,21 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
 
         addLog("Penemuan Hardware Encoders Perangkat: ${result.size - 1} encoder terdeteksi.", LogLevel.INFO, "HARDWARE")
         _uiState.update { it.copy(availableVideoEncoders = result) }
+    }
+
+    private fun checkMediaPerformanceClass() {
+        if (Build.VERSION.SDK_INT >= 31) {
+            val perfClass = Build.VERSION.MEDIA_PERFORMANCE_CLASS
+            val statusStr = when {
+                perfClass >= Build.VERSION_CODES.U -> "Flagship Class 14 (Sangat Cepat • 4K 60fps HEVC/AV1)"
+                perfClass >= Build.VERSION_CODES.TIRAMISU -> "Performance Class 13 (Tinggi • 1080p 60fps)"
+                perfClass >= Build.VERSION_CODES.S -> "Performance Class 12 (Standar • 1080p 30fps)"
+                else -> "Standard Android Device Class"
+            }
+            addLog("Media Performance Class Perangkat: $statusStr (Level $perfClass)", LogLevel.INFO, "PERFORMANCE")
+        } else {
+            addLog("Media Performance Class: Legacy Android Device (${Build.VERSION.RELEASE})", LogLevel.INFO, "PERFORMANCE")
+        }
     }
 
     fun refreshEncodedHistory() {
@@ -444,6 +463,9 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                     var durationSec = 0L
                     var width = 1920
                     var height = 1080
+                    var fps = 0f
+                    var audioChannels = 0
+                    var colorStandard: String? = null
 
                     val retriever = MediaMetadataRetriever()
                     try {
@@ -451,14 +473,47 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                         val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
                         val w = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 0
                         val h = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 0
+                        val fpsStr = if (Build.VERSION.SDK_INT >= 30) retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_CAPTURE_FRAMERATE) else null
+                        fps = fpsStr?.toFloatOrNull() ?: 0f
+
+                        val colorStd = if (Build.VERSION.SDK_INT >= 30) retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_COLOR_STANDARD) else null
+                        if (colorStd != null) {
+                            colorStandard = when (colorStd.toIntOrNull()) {
+                                android.media.MediaFormat.COLOR_STANDARD_BT2020 -> "BT.2020 (HDR)"
+                                android.media.MediaFormat.COLOR_STANDARD_BT709 -> "BT.709 (sRGB)"
+                                else -> "BT.709"
+                            }
+                        }
+
                         if (durationMs > 0) durationSec = durationMs / 1000
                         if (w > 0) width = w
                         if (h > 0) height = h
                     } catch (_: Exception) {
-                        addLog("Gagal membaca metadata parsial video (menggunakan fallback 1920x1080).", LogLevel.WARNING, "METADATA")
+                        addLog("Gagal membaca metadata parsial video.", LogLevel.WARNING, "METADATA")
                     } finally {
                         try { retriever.release() } catch (_: Exception) {}
                     }
+
+                    // Native MediaExtractor for precise Track FPS & Audio Channels
+                    try {
+                        val extractor = android.media.MediaExtractor()
+                        extractor.setDataSource(context, uri, null)
+                        for (i in 0 until extractor.trackCount) {
+                            val format = extractor.getTrackFormat(i)
+                            val mime = format.getString(android.media.MediaFormat.KEY_MIME) ?: ""
+                            if (mime.startsWith("video/")) {
+                                if (format.containsKey(android.media.MediaFormat.KEY_FRAME_RATE)) {
+                                    val frameRate = try { format.getInteger(android.media.MediaFormat.KEY_FRAME_RATE).toFloat() } catch (_: Exception) { format.getFloat(android.media.MediaFormat.KEY_FRAME_RATE) }
+                                    if (frameRate > 0f) fps = frameRate
+                                }
+                            } else if (mime.startsWith("audio/")) {
+                                if (format.containsKey(android.media.MediaFormat.KEY_CHANNEL_COUNT)) {
+                                    audioChannels = format.getInteger(android.media.MediaFormat.KEY_CHANNEL_COUNT)
+                                }
+                            }
+                        }
+                        extractor.release()
+                    } catch (_: Exception) {}
 
                     val metadata = SelectedMediaItem(
                         uri = uri,
@@ -467,7 +522,10 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                         sizeBytes = fileSize,
                         durationSec = durationSec,
                         width = width,
-                        height = height
+                        height = height,
+                        fps = fps,
+                        audioChannels = audioChannels,
+                        colorStandard = colorStandard
                     )
                     _uiState.update { current ->
                         val updated = current.copy(
