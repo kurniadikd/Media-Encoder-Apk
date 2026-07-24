@@ -1,18 +1,22 @@
 package com.example.videoencoder.ui.theme
 
 import android.app.Activity
+import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
-// Rich Vibrant Dark Color Scheme
+// Rich Vibrant Dark Color Scheme (Fallback for Android 11 and older)
 private val VibrantDarkColorScheme = darkColorScheme(
     primary = Color(0xFF818CF8),             // Neon Indigo
     onPrimary = Color(0xFF1E1B4B),
@@ -36,7 +40,7 @@ private val VibrantDarkColorScheme = darkColorScheme(
     outlineVariant = Color(0xFF475569)
 )
 
-// Rich Vibrant Light Color Scheme
+// Rich Vibrant Light Color Scheme (Fallback for Android 11 and older)
 private val VibrantLightColorScheme = lightColorScheme(
     primary = Color(0xFF4F46E5),             // Deep Electric Indigo
     onPrimary = Color(0xFFFFFFFF),
@@ -63,10 +67,17 @@ private val VibrantLightColorScheme = lightColorScheme(
 @Composable
 fun VideoEncoderTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = false, // Forced false for consistent custom Vibrant theme!
+    dynamicColor: Boolean = true, // Dynamic Material You wallpaper color matching enabled!
     content: @Composable () -> Unit
 ) {
-    val colorScheme = if (darkTheme) VibrantDarkColorScheme else VibrantLightColorScheme
+    val colorScheme = when {
+        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+            val context = LocalContext.current
+            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+        }
+        darkTheme -> VibrantDarkColorScheme
+        else -> VibrantLightColorScheme
+    }
 
     val view = LocalView.current
     if (!view.isInEditMode) {
