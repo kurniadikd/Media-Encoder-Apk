@@ -72,6 +72,7 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedTextField
@@ -151,7 +152,7 @@ fun MainScreenView(
         uri?.let { viewModel.onMediaSelected(it, MediaType.IMAGE) }
     }
 
-    val audioPickerLauncher = rememberLauncherForActivityResult(
+    val audioDocumentPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         uri?.let { viewModel.onMediaSelected(it, MediaType.AUDIO) }
