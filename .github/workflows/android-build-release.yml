@@ -1,4 +1,4 @@
-name: Android Release Build
+name: Android Release Build & Publish
 
 on:
   push:
@@ -7,9 +7,12 @@ on:
     branches: [ "main" ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
-    name: Build Release APK
+    name: Build & Publish Release APK
     runs-on: ubuntu-latest
 
     steps:
@@ -29,8 +32,29 @@ jobs:
       - name: Build Release APK
         run: ./gradlew assembleRelease --no-daemon
 
-      - name: Upload Release APK Artifact
+      - name: Prepare APK File
+        run: cp app/build/outputs/apk/release/app-release.apk Media-Encoder-v1.0.0.apk
+
+      - name: Upload Workflow Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Hardware-Video-Encoder-Release-APK
-          path: app/build/outputs/apk/release/app-release.apk
+          name: Media-Encoder-v1.0.0.apk
+          path: Media-Encoder-v1.0.0.apk
+
+      - name: Publish to GitHub Releases
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.0
+          name: "Media Encoder v1.0.0"
+          body: |
+            🚀 **Official Release Build of Media Encoder App**
+            
+            - 🎥 **Video Codec Encoders**: HEVC (H.265), AVC (H.264), VP9, AV1, VP8, MPEG-4, H.263 via Hardware MediaCodec.
+            - 🖼️ **Image Encoder**: WEBP, JPEG, PNG with quality & resizing controls.
+            - 🎵 **Audio Encoder**: AAC, Opus, AMR-WB.
+            - 📂 **Storage Destination**: External Public Movies & Internal App Storage.
+            - 📱 **Native File Manager Integration**: Open With & Share support.
+          files: Media-Encoder-v1.0.0.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
