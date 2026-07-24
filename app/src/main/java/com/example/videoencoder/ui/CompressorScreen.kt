@@ -42,7 +42,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.calculateBottomPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -1301,7 +1300,7 @@ fun EncodedHistoryCardItem(
     item: EncodedFileItem,
     onDelete: () -> Unit,
     onPlay: () -> Unit,
-    onShare: (EncodedFileItem) -> Unit
+    onShare: () -> Unit
 ) {
     val sizeMb = String.format(Locale.US, "%.1f MB", item.sizeBytes / 1_000_000f)
     val dateFormat = SimpleDateFormat("dd MMM, HH:mm", Locale.getDefault())
