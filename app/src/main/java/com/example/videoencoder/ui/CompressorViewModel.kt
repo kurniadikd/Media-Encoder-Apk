@@ -90,7 +90,8 @@ data class SelectedMediaItem(
     val height: Int = 0,
     val fps: Float = 0f,
     val audioChannels: Int = 0,
-    val colorStandard: String? = null
+    val colorStandard: String? = null,
+    val videoMime: String? = null
 )
 
 data class EncodedFileItem(
@@ -361,11 +362,25 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    fun getAppOutputDirectory(): File {
+        val basePublic = Environment.getExternalStorageDirectory()
+        val mediaEncoderFolder = File(basePublic, "Media Encoder")
+        if (!mediaEncoderFolder.exists()) {
+            try { mediaEncoderFolder.mkdirs() } catch (_: Exception) {}
+        }
+        return if (mediaEncoderFolder.exists()) mediaEncoderFolder else basePublic
+    }
+
     fun refreshEncodedHistory() {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             val context = getApplication<Application>().applicationContext
             val directoriesToScan = mutableListOf<File>()
             
+            val primaryOutputFolder = getAppOutputDirectory()
+            if (primaryOutputFolder.exists()) {
+                directoriesToScan.add(primaryOutputFolder)
+            }
+
             val externalPublicMovies = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
             if (externalPublicMovies != null) {
                 val mediaEncoderMoviesFolder = File(externalPublicMovies, "Media Encoder")
@@ -524,7 +539,8 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                         try { retriever.release() } catch (_: Exception) {}
                     }
 
-                    // Native MediaExtractor for precise Track FPS & Audio Channels
+                    // Native MediaExtractor for precise Track FPS, Codec Mime, & Audio Channels
+                    var detectedVideoMime: String? = null
                     try {
                         val extractor = android.media.MediaExtractor()
                         extractor.setDataSource(context, uri, null)
@@ -532,6 +548,7 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                             val format = extractor.getTrackFormat(i)
                             val mime = format.getString(android.media.MediaFormat.KEY_MIME) ?: ""
                             if (mime.startsWith("video/")) {
+                                detectedVideoMime = mime
                                 if (format.containsKey(android.media.MediaFormat.KEY_FRAME_RATE)) {
                                     val frameRate = try { format.getInteger(android.media.MediaFormat.KEY_FRAME_RATE).toFloat() } catch (_: Exception) { format.getFloat(android.media.MediaFormat.KEY_FRAME_RATE) }
                                     if (frameRate > 0f) fps = frameRate
@@ -555,12 +572,16 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                         height = height,
                         fps = fps,
                         audioChannels = audioChannels,
-                        colorStandard = colorStandard
+                        colorStandard = colorStandard,
+                        videoMime = detectedVideoMime
                     )
                     _uiState.update { current ->
+                        val autoBitrateMbps = if (durationSec > 0) ((fileSize * 8f / durationSec) * 0.7f / 1_000_000f).coerceIn(0.5f, 30.0f) else 4.0f
                         val updated = current.copy(
                             currentScreen = AppScreen.PREPROCESS,
                             selectedMedia = metadata,
+                            targetBitrateMbps = autoBitrateMbps,
+                            useAutoBitrate = false,
                             completedOutputPath = null,
                             errorMessage = null
                         )
@@ -736,16 +757,7 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
         val media = state.selectedMedia ?: return
         val context = getApplication<Application>().applicationContext
 
-        val outputDir = if (state.storageLocationOption == StorageLocationOption.EXTERNAL_MOVIES) {
-            val basePublic = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
-            val mediaEncoderFolder = File(basePublic, "Media Encoder")
-            if (!mediaEncoderFolder.exists()) {
-                mediaEncoderFolder.mkdirs()
-            }
-            if (mediaEncoderFolder.exists()) mediaEncoderFolder else basePublic
-        } else {
-            context.filesDir
-        }
+        val outputDir = getAppOutputDirectory()
 
         val paramLog = if (media.mediaType == MediaType.IMAGE) {
             "Config Gambar: Format=${state.imageFormat}, Kualitas=${state.imageQuality}%, Skala=${state.imageScalePercent}%"

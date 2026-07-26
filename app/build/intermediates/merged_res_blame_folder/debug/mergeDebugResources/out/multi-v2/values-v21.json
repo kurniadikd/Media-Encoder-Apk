@@ -4,7 +4,7 @@
             "outputFile": "com.example.videoencoder.app-mergeDebugResources-2:/values-v21/values-v21.xml",
             "map": [
                 {
-                    "source": "C:\\Users\\Kurniadi\\.gradle\\caches\\8.9\\transforms\\a4b6c068d3d6f0e7ddcb5a47d205d270\\transformed\\core-1.15.0\\res\\values-v21\\values-v21.xml",
+                    "source": "C:\\Users\\Kurniadi\\.gradle\\caches\\8.9\\transforms\\56b97ae55f0e4d7283915433fc1f298c\\transformed\\core-1.15.0\\res\\values-v21\\values-v21.xml",
                     "from": {
                         "startLines": "2,3,4,5,6,7,8,9,10,13",
                         "startColumns": "4,4,4,4,4,4,4,4,4,4",

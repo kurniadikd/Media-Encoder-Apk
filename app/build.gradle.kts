@@ -13,11 +13,8 @@ android {
         minSdk = 26
         targetSdk = 35
 
-        val autoVersionCode = project.findProperty("versionCode")?.toString()?.toIntOrNull() ?: 1
-        val autoVersionName = project.findProperty("versionName")?.toString() ?: "1.0.0"
-
-        versionCode = autoVersionCode
-        versionName = autoVersionName
+        versionCode = 2
+        versionName = "1.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

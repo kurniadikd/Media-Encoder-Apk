@@ -14,6 +14,7 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
@@ -83,6 +84,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
@@ -107,6 +109,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -454,6 +457,103 @@ fun M3ExpressiveFilterChip(
 }
 
 @Composable
+fun <T> M3ExpressiveSegmentedButtonGroup(
+    options: List<Pair<T, String>>,
+    selectedOption: T,
+    onOptionSelected: (T) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        options.forEachIndexed { index, (option, label) ->
+            val isSelected = option == selectedOption
+            val isFirst = index == 0
+            val isLast = index == options.size - 1
+
+            val startCorner by animateDpAsState(
+                targetValue = if (isFirst || isSelected) 24.dp else 6.dp,
+                animationSpec = spring(
+                    stiffness = Spring.StiffnessMediumLow,
+                    dampingRatio = Spring.DampingRatioMediumBouncy
+                ),
+                label = "start_corner"
+            )
+
+            val endCorner by animateDpAsState(
+                targetValue = if (isLast || isSelected) 24.dp else 6.dp,
+                animationSpec = spring(
+                    stiffness = Spring.StiffnessMediumLow,
+                    dampingRatio = Spring.DampingRatioMediumBouncy
+                ),
+                label = "end_corner"
+            )
+
+            val shape = RoundedCornerShape(
+                topStart = startCorner,
+                bottomStart = startCorner,
+                topEnd = endCorner,
+                bottomEnd = endCorner
+            )
+
+            val containerColor by animateColorAsState(
+                targetValue = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                animationSpec = tween(durationMillis = 180),
+                label = "segmented_bg"
+            )
+
+            val contentColor by animateColorAsState(
+                targetValue = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                animationSpec = tween(durationMillis = 180),
+                label = "segmented_fg"
+            )
+
+            val interactionSource = remember { MutableInteractionSource() }
+            val isPressed by interactionSource.collectIsPressedAsState()
+
+            val animatedScale by animateFloatAsState(
+                targetValue = if (isPressed) 0.94f else 1.0f,
+                animationSpec = spring(
+                    stiffness = Spring.StiffnessMediumLow,
+                    dampingRatio = Spring.DampingRatioMediumBouncy
+                ),
+                label = "segmented_scale"
+            )
+
+            Surface(
+                onClick = { onOptionSelected(option) },
+                modifier = Modifier
+                    .weight(1f)
+                    .graphicsLayer {
+                        scaleX = animatedScale
+                        scaleY = animatedScale
+                    },
+                shape = shape,
+                color = containerColor,
+                contentColor = contentColor,
+                interactionSource = interactionSource
+            ) {
+                Box(
+                    modifier = Modifier.padding(vertical = 12.dp, horizontal = 4.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun M3ExpressiveCard(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
@@ -567,6 +667,11 @@ fun MainScreenView(
 
     Box(modifier = Modifier.fillMaxSize()) {
         // 1. Scaffold & List Content
+        val mainScrollState = rememberScrollState()
+        val isScrollAtTop by remember {
+            derivedStateOf { mainScrollState.value == 0 }
+        }
+
         Scaffold(
             contentWindowInsets = WindowInsets(0, 0, 0, 0),
             topBar = {
@@ -615,7 +720,7 @@ fun MainScreenView(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
-                    .verticalScroll(rememberScrollState())
+                    .verticalScroll(mainScrollState)
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
@@ -811,14 +916,27 @@ fun MainScreenView(
                     }
                 }
 
-                // Official M3 Expressive Main Toggle FAB with Contrasting Close Button Transformation
-                M3ExpressiveLargeFAB(
+                // Official Medium Primary Extended FloatingActionButton with Auto-Shrink on Scroll
+                ExtendedFloatingActionButton(
+                    text = {
+                        Text(
+                            text = if (isFabMenuExpanded) "Tutup" else "Input File",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                        )
+                    },
+                    icon = {
+                        Icon(
+                            imageVector = if (isFabMenuExpanded) Icons.Default.Close else Icons.Default.Add,
+                            contentDescription = null,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    },
                     onClick = { isFabMenuExpanded = !isFabMenuExpanded },
-                    isExpanded = isFabMenuExpanded,
-                    collapsedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                    collapsedContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                    expandedContainerColor = MaterialTheme.colorScheme.tertiary,
-                    expandedContentColor = MaterialTheme.colorScheme.onTertiary
+                    expanded = isFabMenuExpanded || isScrollAtTop,
+                    containerColor = if (isFabMenuExpanded) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary,
+                    contentColor = if (isFabMenuExpanded) MaterialTheme.colorScheme.onTertiary else MaterialTheme.colorScheme.onPrimary,
+                    shape = RoundedCornerShape(20.dp),
+                    elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp)
                 )
             }
         }
@@ -848,7 +966,7 @@ fun PreprocessScreenView(
                 },
                 title = {
                     Text(
-                        text = "Pengaturan Enkoder (${media.mediaType.label})",
+                        text = "Pengaturan Enkoder",
                         style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
                     )
                 },
@@ -953,35 +1071,57 @@ fun PreprocessScreenView(
                 }
             }
 
-            Text("Parameter Pengodean Hardware (Dropdown)", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+            Text("Parameter Pengodean Hardware", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
 
             when (media.mediaType) {
                 MediaType.VIDEO -> {
                     // 1. Video Codec Dropdown
-                    val codecOptions = if (uiState.availableVideoEncoders.isNotEmpty()) uiState.availableVideoEncoders else listOf(
-                        "DEFAULT" to "Default (Bawaan System)",
+                    val fileCodecLabel = when {
+                        media.videoMime?.contains("hevc", ignoreCase = true) == true || media.videoMime?.contains("h265", ignoreCase = true) == true -> "HEVC (H.265)"
+                        media.videoMime?.contains("avc", ignoreCase = true) == true || media.videoMime?.contains("h264", ignoreCase = true) == true -> "AVC (H.264)"
+                        media.videoMime?.contains("vp9", ignoreCase = true) == true -> "VP9"
+                        media.videoMime?.contains("av01", ignoreCase = true) == true || media.videoMime?.contains("av1", ignoreCase = true) == true -> "AV1"
+                        else -> "AVC (H.264)"
+                    }
+
+                    val codecOptions = if (uiState.availableVideoEncoders.isNotEmpty()) {
+                        uiState.availableVideoEncoders.map { (key, label) ->
+                            if (key == "DEFAULT") key to fileCodecLabel else key to label
+                        }
+                    } else listOf(
+                        "DEFAULT" to fileCodecLabel,
                         MimeTypes.VIDEO_H265 to "HEVC (H.265)",
                         MimeTypes.VIDEO_H264 to "AVC (H.264)",
                         MimeTypes.VIDEO_VP9 to "VP9",
                         MimeTypes.VIDEO_AV1 to "AV1"
                     )
+
                     M3DropdownSelector(
                         label = "Video Codec Encoder",
-                        selectedLabel = codecOptions.firstOrNull { it.first == uiState.outputFormat }?.second ?: "Default (Bawaan System)",
+                        selectedLabel = codecOptions.firstOrNull { it.first == uiState.outputFormat }?.second ?: fileCodecLabel,
                         options = codecOptions.map { it.second },
                         onOptionSelected = { index -> viewModel.setCodecFormat(codecOptions[index].first) }
                     )
 
-                    // 2. Target Resolution Dropdown
-                    val resOptions = ResolutionPreset.values()
-                    M3DropdownSelector(
-                        label = "Target Resolusi Video",
-                        selectedLabel = uiState.resolutionPreset.label,
-                        options = resOptions.map { it.label },
-                        onOptionSelected = { index -> viewModel.setResolutionPreset(resOptions[index]) }
-                    )
+                    // 2. Bitrate Control Mode Connected Segmented ButtonGroup
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = "Bitrate Control Mode",
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+                        )
+                        val effectiveOption = if (uiState.bitrateModeOption == BitrateModeOption.DEFAULT) BitrateModeOption.VBR else uiState.bitrateModeOption
+                        M3ExpressiveSegmentedButtonGroup(
+                            options = listOf(
+                                BitrateModeOption.VBR to "VBR",
+                                BitrateModeOption.CBR to "CBR",
+                                BitrateModeOption.CQ to "CQ"
+                            ),
+                            selectedOption = effectiveOption,
+                            onOptionSelected = { option -> viewModel.setBitrateModeOption(option) }
+                        )
+                    }
 
-                    // 3. Adaptive Bitrate / QP Slider & Auto Option
+                    // 3. Adaptive Bitrate / QP Slider Direct Display
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         val isCQMode = uiState.bitrateModeOption == BitrateModeOption.CQ
 
@@ -991,14 +1131,12 @@ fun PreprocessScreenView(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = if (isCQMode) "Quantizer QP (Faktor Kualitas)" else "Target Video Bitrate",
+                                text = if (isCQMode) "Quantizer QP" else "Target Video Bitrate",
                                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
                             )
                             Text(
-                                text = if (uiState.useAutoBitrate) {
-                                    "Default (Auto System)"
-                                } else if (isCQMode) {
-                                    "QP ${uiState.quantizationParameterQP} (${if (uiState.quantizationParameterQP <= 18) "Tinggi" else if (uiState.quantizationParameterQP <= 28) "Seimbang" else "Kompresi High"})"
+                                text = if (isCQMode) {
+                                    "QP ${uiState.quantizationParameterQP}"
                                 } else {
                                     if (uiState.targetBitrateMbps < 1.0f) {
                                         String.format(Locale.US, "%.1f Mbps (%d kbps)", uiState.targetBitrateMbps, (uiState.targetBitrateMbps * 1000).toInt())
@@ -1011,69 +1149,52 @@ fun PreprocessScreenView(
                             )
                         }
 
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            M3ExpressiveFilterChip(
-                                selected = uiState.useAutoBitrate,
-                                onClick = { viewModel.setUseAutoBitrate(true) },
-                                label = { Text("Default (Auto System)") }
-                            )
-
-                            M3ExpressiveFilterChip(
-                                selected = !uiState.useAutoBitrate,
-                                onClick = { viewModel.setUseAutoBitrate(false) },
-                                label = { Text(if (isCQMode) "Custom QP Slider" else "Custom Bitrate Slider") }
-                            )
-                        }
-
-                        if (!uiState.useAutoBitrate) {
-                            if (isCQMode) {
-                                Slider(
-                                    value = uiState.quantizationParameterQP.toFloat(),
-                                    onValueChange = { viewModel.setQuantizationParameterQP(it.toInt()) },
-                                    valueRange = 1.0f..51.0f,
-                                    steps = 49,
-                                    colors = SliderDefaults.colors(
-                                        thumbColor = MaterialTheme.colorScheme.primary,
-                                        activeTrackColor = MaterialTheme.colorScheme.primary,
-                                        inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
-                                    )
+                        if (isCQMode) {
+                            Slider(
+                                value = uiState.quantizationParameterQP.toFloat(),
+                                onValueChange = { viewModel.setQuantizationParameterQP(it.toInt()) },
+                                valueRange = 1.0f..51.0f,
+                                colors = SliderDefaults.colors(
+                                    thumbColor = MaterialTheme.colorScheme.primary,
+                                    activeTrackColor = MaterialTheme.colorScheme.primary,
+                                    inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
                                 )
-                            } else {
-                                Slider(
-                                    value = uiState.targetBitrateMbps,
-                                    onValueChange = { viewModel.setTargetBitrate(it) },
-                                    valueRange = 0.1f..50.0f,
-                                    steps = 498,
-                                    colors = SliderDefaults.colors(
-                                        thumbColor = MaterialTheme.colorScheme.primary,
-                                        activeTrackColor = MaterialTheme.colorScheme.primary,
-                                        inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
-                                    )
+                            )
+                        } else {
+                            Slider(
+                                value = uiState.targetBitrateMbps,
+                                onValueChange = { viewModel.setTargetBitrate(it) },
+                                valueRange = 0.1f..50.0f,
+                                colors = SliderDefaults.colors(
+                                    thumbColor = MaterialTheme.colorScheme.primary,
+                                    activeTrackColor = MaterialTheme.colorScheme.primary,
+                                    inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
                                 )
-                            }
+                            )
                         }
                     }
 
-                    // 4. Scale Mode Dropdown
+                    // 4. Target Resolution Dropdown
+                    val fileResLabel = if (media.width > 0 && media.height > 0) "${media.width}x${media.height}" else "Asli Video"
+                    val resOptions = ResolutionPreset.values()
+                    val resOptionsLabels = resOptions.map { preset ->
+                        if (preset == ResolutionPreset.DEFAULT) fileResLabel else preset.label
+                    }
+
+                    M3DropdownSelector(
+                        label = "Target Resolusi Video",
+                        selectedLabel = if (uiState.resolutionPreset == ResolutionPreset.DEFAULT) fileResLabel else uiState.resolutionPreset.label,
+                        options = resOptionsLabels,
+                        onOptionSelected = { index -> viewModel.setResolutionPreset(resOptions[index]) }
+                    )
+
+                    // 5. Scale Mode Dropdown
                     val scaleOptions = ScaleModeOption.values()
                     M3DropdownSelector(
                         label = "Modus Skala (Scaling Mode)",
                         selectedLabel = uiState.scaleModeOption.label,
                         options = scaleOptions.map { it.label },
                         onOptionSelected = { index -> viewModel.setScaleModeOption(scaleOptions[index]) }
-                    )
-
-                    // 5. Bitrate Control Mode Dropdown
-                    val bitrateModeOptions = BitrateModeOption.values()
-                    M3DropdownSelector(
-                        label = "Bitrate Control Mode",
-                        selectedLabel = uiState.bitrateModeOption.label,
-                        options = bitrateModeOptions.map { it.label },
-                        onOptionSelected = { index -> viewModel.setBitrateModeOption(bitrateModeOptions[index]) }
                     )
 
                     // 6. Frame Rate (FPS) Dropdown
@@ -1094,21 +1215,30 @@ fun PreprocessScreenView(
                         onOptionSelected = { index -> viewModel.setIFrameInterval(keyframeList[index].first) }
                     )
 
-                    // 8. Rotation Dropdown
-                    val rotationList = listOf(0.0f to "0° (Normal)", 90.0f to "90° Clockwise", 180.0f to "180° Inverted", 270.0f to "270° Counter-Clockwise")
-                    M3DropdownSelector(
-                        label = "Rotasi Video",
-                        selectedLabel = rotationList.firstOrNull { it.first == uiState.rotationDegrees }?.second ?: "0° (Normal)",
-                        options = rotationList.map { it.second },
-                        onOptionSelected = { index -> viewModel.setRotationDegrees(rotationList[index].first) }
-                    )
+                    // 8. Rotasi Video Connected Segmented ButtonGroup
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = "Rotasi Video",
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+                        )
+                        M3ExpressiveSegmentedButtonGroup(
+                            options = listOf(
+                                0.0f to "0°",
+                                90.0f to "90°",
+                                180.0f to "180°",
+                                270.0f to "270°"
+                            ),
+                            selectedOption = uiState.rotationDegrees,
+                            onOptionSelected = { deg -> viewModel.setRotationDegrees(deg) }
+                        )
+                    }
                 }
                 MediaType.IMAGE -> {
                     // Image Format Dropdown
-                    val imgFormats = listOf("WEBP" to "WEBP (Next-Gen)", "JPEG" to "JPEG", "PNG" to "PNG (Lossless)")
+                    val imgFormats = listOf("WEBP" to "WEBP", "JPEG" to "JPEG", "PNG" to "PNG")
                     M3DropdownSelector(
                         label = "Format Gambar Output",
-                        selectedLabel = imgFormats.firstOrNull { it.first == uiState.imageFormat }?.second ?: "WEBP (Next-Gen)",
+                        selectedLabel = imgFormats.firstOrNull { it.first == uiState.imageFormat }?.second ?: "WEBP",
                         options = imgFormats.map { it.second },
                         onOptionSelected = { index -> viewModel.setImageFormat(imgFormats[index].first) }
                     )
@@ -1126,7 +1256,6 @@ fun PreprocessScreenView(
                             value = uiState.imageQuality.toFloat(),
                             onValueChange = { viewModel.setImageQuality(it.toInt()) },
                             valueRange = 10f..100f,
-                            steps = 17,
                             colors = SliderDefaults.colors(
                                 thumbColor = MaterialTheme.colorScheme.primary,
                                 activeTrackColor = MaterialTheme.colorScheme.primary,
@@ -1135,14 +1264,39 @@ fun PreprocessScreenView(
                         )
                     }
 
-                    // Image Resizing Scale Dropdown
-                    val scaleList = listOf(100 to "Original (100%)", 75 to "75% Skala", 50 to "50% Skala", 25 to "25% Skala")
-                    M3DropdownSelector(
-                        label = "Dimensi Gambar (Resizing)",
-                        selectedLabel = scaleList.firstOrNull { it.first == uiState.imageScalePercent }?.second ?: "Original (100%)",
-                        options = scaleList.map { it.second },
-                        onOptionSelected = { index -> viewModel.setImageScalePercent(scaleList[index].first) }
-                    )
+                    // Image Resizing Slider with Output Dimensions Display
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        val targetW = if (media.width > 0) (media.width * uiState.imageScalePercent / 100) else 0
+                        val targetH = if (media.height > 0) (media.height * uiState.imageScalePercent / 100) else 0
+                        val sizeText = if (targetW > 0 && targetH > 0) {
+                            "${targetW}x${targetH} (${uiState.imageScalePercent}%)"
+                        } else {
+                            "${uiState.imageScalePercent}%"
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(text = "Ukuran Hasil", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold))
+                            Text(
+                                text = sizeText,
+                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        Slider(
+                            value = uiState.imageScalePercent.toFloat(),
+                            onValueChange = { viewModel.setImageScalePercent(it.toInt()) },
+                            valueRange = 10f..100f,
+                            colors = SliderDefaults.colors(
+                                thumbColor = MaterialTheme.colorScheme.primary,
+                                activeTrackColor = MaterialTheme.colorScheme.primary,
+                                inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
+                            )
+                        )
+                    }
                 }
                 MediaType.AUDIO -> {
                     // Audio Format Dropdown
@@ -1165,14 +1319,7 @@ fun PreprocessScreenView(
                 }
             }
 
-            // Storage Location Dropdown
-            val storageOptions = StorageLocationOption.values()
-            M3DropdownSelector(
-                label = "Lokasi Penyimpanan Output",
-                selectedLabel = uiState.storageLocationOption.label,
-                options = storageOptions.map { "${it.label} (${it.subtitle})" },
-                onOptionSelected = { index -> viewModel.setStorageLocationOption(storageOptions[index]) }
-            )
+
 
             Spacer(modifier = Modifier.height(32.dp))
         }

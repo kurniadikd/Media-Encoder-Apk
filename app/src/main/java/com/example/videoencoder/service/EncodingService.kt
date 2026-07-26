@@ -137,50 +137,64 @@ class EncodingService : Service() {
             val engine = VideoEncodingEngine(applicationContext)
             val editedItem = engine.createEditedMediaItem(inputUri, config)
 
+            val tempFile = File(applicationContext.cacheDir, "temp_export_${System.currentTimeMillis()}.mp4")
+            try { if (tempFile.exists()) tempFile.delete() } catch (_: Exception) {}
+
             withContext(Dispatchers.Main) {
                 val transformer = engine.buildTransformer(
                     config = config,
                     onCompleted = {
                         progressJob?.cancel()
-                        _progressState.value = ServiceProgressState(
-                            status = EncodingStatus.COMPLETED,
-                            progressPercent = 100,
-                            outputPath = outputPath
-                        )
-                        try {
-                            val file = File(outputPath)
-                            val resolver = applicationContext.contentResolver
-                            val contentValues = android.content.ContentValues().apply {
-                                put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, file.name)
-                                put(android.provider.MediaStore.MediaColumns.SIZE, file.length())
-                                put(android.provider.MediaStore.MediaColumns.DATE_ADDED, System.currentTimeMillis() / 1000)
-                                put(android.provider.MediaStore.MediaColumns.DATE_MODIFIED, System.currentTimeMillis() / 1000)
-                                val mime = if (config.videoFormat != "DEFAULT" && config.videoFormat.isNotBlank()) config.videoFormat else "video/mp4"
-                                put(android.provider.MediaStore.MediaColumns.MIME_TYPE, mime)
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                                put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, "${Environment.DIRECTORY_MOVIES}/Media Encoder")
-                                put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0)
-                            }
-                            }
-                            val contentUri = if (config.videoFormat.startsWith("audio/")) {
-                                android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
-                            } else {
-                                android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-                            }
-                            resolver.insert(contentUri, contentValues)
+                        scope.launch(Dispatchers.IO) {
+                            try {
+                                val targetFile = File(outputPath)
+                                targetFile.parentFile?.mkdirs()
+                                if (tempFile.exists()) {
+                                    tempFile.copyTo(targetFile, overwrite = true)
+                                    tempFile.delete()
+                                }
+                                val resolver = applicationContext.contentResolver
+                                val contentValues = android.content.ContentValues().apply {
+                                    put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, targetFile.name)
+                                    put(android.provider.MediaStore.MediaColumns.SIZE, targetFile.length())
+                                    put(android.provider.MediaStore.MediaColumns.DATE_ADDED, System.currentTimeMillis() / 1000)
+                                    put(android.provider.MediaStore.MediaColumns.DATE_MODIFIED, System.currentTimeMillis() / 1000)
+                                    val mime = if (config.videoFormat != "DEFAULT" && config.videoFormat.isNotBlank()) config.videoFormat else "video/mp4"
+                                    put(android.provider.MediaStore.MediaColumns.MIME_TYPE, mime)
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                        put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, "Media Encoder")
+                                        put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0)
+                                    }
+                                }
+                                val contentUri = if (config.videoFormat.startsWith("audio/")) {
+                                    android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+                                } else {
+                                    android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+                                }
+                                resolver.insert(contentUri, contentValues)
 
-                            android.media.MediaScannerConnection.scanFile(
-                                applicationContext,
-                                arrayOf(outputPath),
-                                null,
-                                null
-                            )
-                        } catch (_: Exception) {}
-                        updateNotification(100, "Pengodean Selesai! 🎉", isFinished = true)
-                        stopSelfWithDelay()
+                                android.media.MediaScannerConnection.scanFile(
+                                    applicationContext,
+                                    arrayOf(outputPath),
+                                    null,
+                                    null
+                                )
+                            } catch (_: Exception) {}
+
+                            withContext(Dispatchers.Main) {
+                                _progressState.value = ServiceProgressState(
+                                    status = EncodingStatus.COMPLETED,
+                                    progressPercent = 100,
+                                    outputPath = outputPath
+                                )
+                                updateNotification(100, "Pengodean Selesai! 🎉", isFinished = true)
+                                stopSelfWithDelay()
+                            }
+                        }
                     },
                     onError = { exception ->
                         progressJob?.cancel()
+                        try { if (tempFile.exists()) tempFile.delete() } catch (_: Exception) {}
                         val errorCodeName = exception.errorCodeName
                         val errorCode = exception.errorCode
                         val causeMsg = exception.cause?.message ?: exception.localizedMessage ?: "Hardware Muxer Error"
@@ -201,7 +215,7 @@ class EncodingService : Service() {
                 )
 
                 activeTransformer = transformer
-                transformer.start(editedItem, outputPath)
+                transformer.start(editedItem, tempFile.absolutePath)
 
                 val progressHolder = ProgressHolder()
                 progressJob?.cancel()
