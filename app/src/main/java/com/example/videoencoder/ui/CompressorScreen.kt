@@ -1,7 +1,10 @@
 package com.example.videoencoder.ui
 
+import android.content.ContentUris
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.provider.MediaStore
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -733,54 +736,95 @@ fun MainScreenView(
                         try {
                             val file = File(item.path)
                             if (file.exists()) {
-                                try {
-                                    android.media.MediaScannerConnection.scanFile(
-                                        context.applicationContext,
-                                        arrayOf(file.absolutePath),
-                                        null,
-                                        null
-                                    )
-                                } catch (_: Exception) {}
+                                val exactMime = when {
+                                    file.name.endsWith(".mp4", ignoreCase = true) -> "video/mp4"
+                                    file.name.endsWith(".mkv", ignoreCase = true) -> "video/x-matroska"
+                                    file.name.endsWith(".webm", ignoreCase = true) -> "video/webm"
+                                    file.name.endsWith(".avi", ignoreCase = true) -> "video/avi"
+                                    file.name.endsWith(".jpg", ignoreCase = true) || file.name.endsWith(".jpeg", ignoreCase = true) -> "image/jpeg"
+                                    file.name.endsWith(".png", ignoreCase = true) -> "image/png"
+                                    file.name.endsWith(".webp", ignoreCase = true) -> "image/webp"
+                                    file.name.endsWith(".m4a", ignoreCase = true) || file.name.endsWith(".aac", ignoreCase = true) -> "audio/aac"
+                                    file.name.endsWith(".mp3", ignoreCase = true) -> "audio/mpeg"
+                                    else -> when (item.mediaType) {
+                                        MediaType.IMAGE -> "image/*"
+                                        MediaType.AUDIO -> "audio/*"
+                                        else -> "video/*"
+                                    }
+                                }
 
-                                val uri: Uri = try {
-                                    FileProvider.getUriForFile(
-                                        context,
-                                        "${context.packageName}.fileprovider",
-                                        file
-                                    )
-                                } catch (e: Exception) {
+                                val fileProviderUri = try {
+                                    FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                                } catch (_: Exception) {
                                     Uri.fromFile(file)
                                 }
 
-                                val mime = when (item.mediaType) {
-                                    MediaType.IMAGE -> "image/*"
-                                    MediaType.AUDIO -> "audio/*"
-                                    else -> "video/*"
-                                }
-
-                                val targetIntent = Intent(Intent.ACTION_VIEW).apply {
-                                    setDataAndType(uri, mime)
-                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                    addFlags(Intent.FLAG_GRANT_PREFIX_URI_PERMISSION)
-                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                    addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                                }
-
-                                val resInfoList = context.packageManager.queryIntentActivities(targetIntent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)
-                                for (resolveInfo in resInfoList) {
-                                    val packageName = resolveInfo.activityInfo.packageName
+                                val getMediaStoreUri: () -> Uri? = {
                                     try {
-                                        context.grantUriPermission(
-                                            packageName,
-                                            uri,
-                                            Intent.FLAG_GRANT_READ_URI_PERMISSION
-                                        )
-                                    } catch (_: Exception) {}
+                                        val contentUri = when (item.mediaType) {
+                                            MediaType.IMAGE -> MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+                                            MediaType.AUDIO -> MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+                                            else -> MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+                                        }
+                                        val projection = arrayOf(MediaStore.MediaColumns._ID)
+                                        val selection = "${MediaStore.MediaColumns.DATA} = ?"
+                                        val selectionArgs = arrayOf(file.absolutePath)
+                                        context.contentResolver.query(
+                                            contentUri,
+                                            projection,
+                                            selection,
+                                            selectionArgs,
+                                            null
+                                        )?.use { cursor ->
+                                            if (cursor.moveToFirst()) {
+                                                val id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID))
+                                                ContentUris.withAppendedId(contentUri, id)
+                                            } else null
+                                        }
+                                    } catch (_: Exception) { null }
                                 }
 
-                                val chooser = Intent.createChooser(targetIntent, "Buka Berkas Dengan")
-                                chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                context.startActivity(chooser)
+                                val launchIntent: (Uri) -> Unit = { targetUri ->
+                                    val targetIntent = Intent(Intent.ACTION_VIEW).apply {
+                                        setDataAndType(targetUri, exactMime)
+                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                        addFlags(Intent.FLAG_GRANT_PREFIX_URI_PERMISSION)
+                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    }
+
+                                    val resInfoList = context.packageManager.queryIntentActivities(targetIntent, PackageManager.MATCH_DEFAULT_ONLY)
+                                    for (resolveInfo in resInfoList) {
+                                        val pkg = resolveInfo.activityInfo.packageName
+                                        try {
+                                            context.grantUriPermission(pkg, targetUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                        } catch (_: Exception) {}
+                                    }
+
+                                    try {
+                                        val chooser = Intent.createChooser(targetIntent, "Buka Berkas Dengan").apply {
+                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        }
+                                        context.startActivity(chooser)
+                                    } catch (_: Exception) {
+                                        Toast.makeText(context, "Tidak ada aplikasi penampil media yang cocok.", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+
+                                val existingMediaStoreUri = getMediaStoreUri()
+                                if (existingMediaStoreUri != null) {
+                                    launchIntent(existingMediaStoreUri)
+                                } else {
+                                    android.media.MediaScannerConnection.scanFile(
+                                        context.applicationContext,
+                                        arrayOf(file.absolutePath),
+                                        arrayOf(exactMime)
+                                    ) { _, scannedUri ->
+                                        val uriToUse = scannedUri ?: getMediaStoreUri() ?: fileProviderUri
+                                        android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                            launchIntent(uriToUse)
+                                        }
+                                    }
+                                }
                             } else {
                                 Toast.makeText(context, "Berkas tidak ditemukan: ${file.name}", Toast.LENGTH_SHORT).show()
                             }
@@ -792,45 +836,51 @@ fun MainScreenView(
                         try {
                             val file = File(item.path)
                             if (file.exists()) {
-                                val uri: Uri = try {
-                                    FileProvider.getUriForFile(
-                                        context,
-                                        "${context.packageName}.fileprovider",
-                                        file
-                                    )
-                                } catch (e: Exception) {
+                                val exactMime = when {
+                                    file.name.endsWith(".mp4", ignoreCase = true) -> "video/mp4"
+                                    file.name.endsWith(".jpg", ignoreCase = true) || file.name.endsWith(".jpeg", ignoreCase = true) -> "image/jpeg"
+                                    file.name.endsWith(".png", ignoreCase = true) -> "image/png"
+                                    file.name.endsWith(".webp", ignoreCase = true) -> "image/webp"
+                                    file.name.endsWith(".m4a", ignoreCase = true) || file.name.endsWith(".aac", ignoreCase = true) -> "audio/aac"
+                                    else -> "video/mp4"
+                                }
+
+                                val fileProviderUri = try {
+                                    FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                                } catch (_: Exception) {
                                     Uri.fromFile(file)
                                 }
 
-                                val mime = when (item.mediaType) {
-                                    MediaType.IMAGE -> "image/*"
-                                    MediaType.AUDIO -> "audio/*"
-                                    else -> "video/*"
+                                val launchShare: (Uri) -> Unit = { targetUri ->
+                                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                        type = exactMime
+                                        putExtra(Intent.EXTRA_STREAM, targetUri)
+                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    }
+
+                                    val resInfoList = context.packageManager.queryIntentActivities(shareIntent, PackageManager.MATCH_DEFAULT_ONLY)
+                                    for (resolveInfo in resInfoList) {
+                                        val pkg = resolveInfo.activityInfo.packageName
+                                        try {
+                                            context.grantUriPermission(pkg, targetUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                        } catch (_: Exception) {}
+                                    }
+
+                                    val chooser = Intent.createChooser(shareIntent, "Bagikan Berkas").apply {
+                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    }
+                                    context.startActivity(chooser)
                                 }
 
-                                val targetIntent = Intent(Intent.ACTION_SEND).apply {
-                                    type = mime
-                                    putExtra(Intent.EXTRA_STREAM, uri)
-                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                    addFlags(Intent.FLAG_GRANT_PREFIX_URI_PERMISSION)
-                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                android.media.MediaScannerConnection.scanFile(
+                                    context.applicationContext,
+                                    arrayOf(file.absolutePath),
+                                    arrayOf(exactMime)
+                                ) { _, scannedUri ->
+                                    val uriToUse = scannedUri ?: fileProviderUri
+                                    launchShare(uriToUse)
                                 }
-
-                                val resInfoList = context.packageManager.queryIntentActivities(targetIntent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)
-                                for (resolveInfo in resInfoList) {
-                                    val packageName = resolveInfo.activityInfo.packageName
-                                    try {
-                                        context.grantUriPermission(
-                                            packageName,
-                                            uri,
-                                            Intent.FLAG_GRANT_READ_URI_PERMISSION
-                                        )
-                                    } catch (_: Exception) {}
-                                }
-
-                                val chooser = Intent.createChooser(targetIntent, "Bagikan Berkas Media")
-                                chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                context.startActivity(chooser)
                             } else {
                                 Toast.makeText(context, "Berkas tidak ditemukan: ${file.name}", Toast.LENGTH_SHORT).show()
                             }

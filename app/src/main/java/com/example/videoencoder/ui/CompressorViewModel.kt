@@ -363,12 +363,12 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun getAppOutputDirectory(): File {
-        val basePublic = Environment.getExternalStorageDirectory()
-        val mediaEncoderFolder = File(basePublic, "Media Encoder")
+        val rootPublic = Environment.getExternalStorageDirectory()
+        val mediaEncoderFolder = File(rootPublic, "Media Encoder")
         if (!mediaEncoderFolder.exists()) {
             try { mediaEncoderFolder.mkdirs() } catch (_: Exception) {}
         }
-        return if (mediaEncoderFolder.exists()) mediaEncoderFolder else basePublic
+        return if (mediaEncoderFolder.exists()) mediaEncoderFolder else rootPublic
     }
 
     fun refreshEncodedHistory() {

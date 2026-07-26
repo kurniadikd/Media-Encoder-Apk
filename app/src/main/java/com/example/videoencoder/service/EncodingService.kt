@@ -147,38 +147,49 @@ class EncodingService : Service() {
                         progressJob?.cancel()
                         scope.launch(Dispatchers.IO) {
                             try {
+                                var finalOutputPath = outputPath
                                 val targetFile = File(outputPath)
                                 targetFile.parentFile?.mkdirs()
                                 if (tempFile.exists()) {
-                                    tempFile.copyTo(targetFile, overwrite = true)
-                                    tempFile.delete()
-                                }
-                                val resolver = applicationContext.contentResolver
-                                val contentValues = android.content.ContentValues().apply {
-                                    put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, targetFile.name)
-                                    put(android.provider.MediaStore.MediaColumns.SIZE, targetFile.length())
-                                    put(android.provider.MediaStore.MediaColumns.DATE_ADDED, System.currentTimeMillis() / 1000)
-                                    put(android.provider.MediaStore.MediaColumns.DATE_MODIFIED, System.currentTimeMillis() / 1000)
-                                    val mime = if (config.videoFormat != "DEFAULT" && config.videoFormat.isNotBlank()) config.videoFormat else "video/mp4"
-                                    put(android.provider.MediaStore.MediaColumns.MIME_TYPE, mime)
-                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                                        put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, "Media Encoder")
-                                        put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0)
+                                    val finalDestination = try {
+                                        tempFile.copyTo(targetFile, overwrite = true)
+                                        targetFile
+                                    } catch (_: Exception) {
+                                        val fallbackFile = File(applicationContext.getExternalFilesDir(Environment.DIRECTORY_MOVIES), targetFile.name)
+                                        fallbackFile.parentFile?.mkdirs()
+                                        tempFile.copyTo(fallbackFile, overwrite = true)
+                                        fallbackFile
                                     }
-                                }
-                                val contentUri = if (config.videoFormat.startsWith("audio/")) {
-                                    android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
-                                } else {
-                                    android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-                                }
-                                resolver.insert(contentUri, contentValues)
+                                    finalOutputPath = finalDestination.absolutePath
+                                    try { tempFile.delete() } catch (_: Exception) {}
 
-                                android.media.MediaScannerConnection.scanFile(
-                                    applicationContext,
-                                    arrayOf(outputPath),
-                                    null,
-                                    null
-                                )
+                                    val resolver = applicationContext.contentResolver
+                                    val contentValues = android.content.ContentValues().apply {
+                                        put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, finalDestination.name)
+                                        put(android.provider.MediaStore.MediaColumns.SIZE, finalDestination.length())
+                                        put(android.provider.MediaStore.MediaColumns.DATE_ADDED, System.currentTimeMillis() / 1000)
+                                        put(android.provider.MediaStore.MediaColumns.DATE_MODIFIED, System.currentTimeMillis() / 1000)
+                                        val mime = if (config.videoFormat != "DEFAULT" && config.videoFormat.isNotBlank()) config.videoFormat else "video/mp4"
+                                        put(android.provider.MediaStore.MediaColumns.MIME_TYPE, mime)
+                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                            put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, "${Environment.DIRECTORY_MOVIES}/Media Encoder")
+                                            put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0)
+                                        }
+                                    }
+                                    val contentUri = if (config.videoFormat.startsWith("audio/")) {
+                                        android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+                                    } else {
+                                        android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+                                    }
+                                    resolver.insert(contentUri, contentValues)
+
+                                    android.media.MediaScannerConnection.scanFile(
+                                        applicationContext,
+                                        arrayOf(finalOutputPath),
+                                        null,
+                                        null
+                                    )
+                                }
                             } catch (_: Exception) {}
 
                             withContext(Dispatchers.Main) {
