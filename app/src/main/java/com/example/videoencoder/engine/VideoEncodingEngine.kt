@@ -50,6 +50,9 @@ class VideoEncodingEngine(private val context: Context) {
             val safeBitrateBps = config.targetBitrateBps.coerceAtLeast(300_000)
             videoEncoderSettingsBuilder.setBitrate(safeBitrateBps)
         }
+        if (config.bitrateMode in listOf(0, 1, 2)) {
+            videoEncoderSettingsBuilder.setBitrateMode(config.bitrateMode)
+        }
         val videoEncoderSettings = videoEncoderSettingsBuilder.build()
 
         val customEncoderFactory = DefaultEncoderFactory.Builder(context)

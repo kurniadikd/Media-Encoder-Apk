@@ -133,6 +133,19 @@ class EncodingService : Service() {
 
         _progressState.value = ServiceProgressState(status = EncodingStatus.RUNNING, progressPercent = 0)
 
+        val modeText = when (config.bitrateMode) {
+            1 -> "VBR"
+            2 -> "CBR"
+            0 -> "CQ"
+            else -> "DEFAULT"
+        }
+        val bitrateText = if (config.targetBitrateBps > 0) String.format("%.2f Mbps", config.targetBitrateBps / 1_000_000.0) else "Auto"
+        val resText = if (config.targetWidth > 0 && config.targetHeight > 0) "${config.targetWidth}x${config.targetHeight}" else "Bawaan File"
+        val iframeText = if (config.iFrameIntervalSec > 0) "${config.iFrameIntervalSec}s" else "Auto"
+
+        val paramSummary = "[PARAMS] Codec: ${config.videoFormat} | Bitrate: $bitrateText ($modeText) | Resolusi: $resText | Keyframe: $iframeText | Rotasi: ${config.rotationDegrees}°"
+        android.util.Log.i("EncodingService", paramSummary)
+
         scope.launch(Dispatchers.IO) {
             val engine = VideoEncodingEngine(applicationContext)
             val editedItem = engine.createEditedMediaItem(inputUri, config)
