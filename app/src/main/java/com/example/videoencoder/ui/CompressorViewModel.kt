@@ -795,13 +795,7 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
         encodingStartTimeMs = System.currentTimeMillis()
         val initialSizeText = String.format(Locale.US, "0.0 MB / %.1f MB", state.estimatedSizeMb)
 
-        val originalExt = if (media.fileName.contains(".")) {
-            media.fileName.substringAfterLast(".")
-        } else ""
-
-        val extension = if (originalExt.isNotBlank()) {
-            originalExt
-        } else if (media.mediaType == MediaType.IMAGE) {
+        val extension = if (media.mediaType == MediaType.IMAGE) {
             state.imageFormat.lowercase()
         } else if (media.mediaType == MediaType.AUDIO) {
             when (state.audioFormat) {
