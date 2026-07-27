@@ -45,7 +45,8 @@ class VideoEncodingEngine(private val context: Context) {
     ): Transformer {
 
         val videoEncoderSettingsBuilder = VideoEncoderSettings.Builder()
-        if (config.targetBitrateBps > 0) {
+        // Constant Quality (CQ / mode 0) does not use target bitrate. Only set bitrate for VBR (1), CBR (2), or Default.
+        if (config.bitrateMode != 0 && config.targetBitrateBps > 0) {
             // Hardware safety floor: clamp minimum custom bitrate to 300_000 bps (0.3 Mbps) to prevent Qualcomm MediaCodec starvation
             val safeBitrateBps = config.targetBitrateBps.coerceAtLeast(300_000)
             videoEncoderSettingsBuilder.setBitrate(safeBitrateBps)

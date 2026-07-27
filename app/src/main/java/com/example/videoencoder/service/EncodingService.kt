@@ -223,8 +223,21 @@ class EncodingService : Service() {
                     }
                 )
 
-                activeTransformer = transformer
-                transformer.start(editedItem, targetFile.absolutePath)
+                try {
+                    activeTransformer = transformer
+                    transformer.start(editedItem, targetFile.absolutePath)
+                } catch (e: Throwable) {
+                    val causeMsg = e.localizedMessage ?: "Mode Bitrate (CQP) / Kodek Tidak Didukung Hardware HP"
+                    val errorLogText = "Pengodean Gagal [CodecInitError]: $causeMsg. (Petunjuk: Sebagian besar hardware SoC Qualcomm tidak mendukung CQP. Harap gunakan VBR atau Auto Bitrate)"
+                    android.util.Log.e("EncodingService", errorLogText, e)
+                    _progressState.value = ServiceProgressState(
+                        status = EncodingStatus.ERROR,
+                        errorMessage = errorLogText
+                    )
+                    updateNotification(0, "Gagal: Mode CQP Tidak Didukung", isFinished = true)
+                    stopSelfWithDelay()
+                    return@withContext
+                }
 
                 val progressHolder = ProgressHolder()
                 progressJob?.cancel()
