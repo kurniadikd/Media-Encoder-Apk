@@ -983,25 +983,23 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    private fun generateUniqueOutputFile(outputDir: File, originalFileName: String, fallbackExtension: String): File {
-        val cleanName = originalFileName.ifBlank { "Encoded_Media.$fallbackExtension" }
-        val finalFileName = if (!cleanName.contains(".") && fallbackExtension.isNotBlank()) {
-            "$cleanName.$fallbackExtension"
+    private fun generateUniqueOutputFile(outputDir: File, originalFileName: String, targetExtension: String): File {
+        val baseName = if (originalFileName.contains(".")) {
+            originalFileName.substringBeforeLast(".")
         } else {
-            cleanName
+            originalFileName.ifBlank { "Encoded_Media" }
         }
 
-        var candidate = File(outputDir, finalFileName)
+        val cleanExt = targetExtension.trim().removePrefix(".").lowercase().ifBlank { "mp4" }
+
+        var candidate = File(outputDir, "$baseName.$cleanExt")
         if (!candidate.exists()) {
             return candidate
         }
 
-        val nameWithoutExt = if (finalFileName.contains(".")) finalFileName.substringBeforeLast(".") else finalFileName
-        val ext = if (finalFileName.contains(".")) ".${finalFileName.substringAfterLast(".")}" else ""
-
         var counter = 1
         while (candidate.exists()) {
-            candidate = File(outputDir, "${nameWithoutExt}_$counter$ext")
+            candidate = File(outputDir, "${baseName}_$counter.$cleanExt")
             counter++
         }
         return candidate
