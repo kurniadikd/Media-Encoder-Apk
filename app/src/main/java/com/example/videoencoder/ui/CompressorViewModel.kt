@@ -783,7 +783,7 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
 
         if (media.mediaType == MediaType.IMAGE) {
             val extension = state.imageFormat.lowercase()
-            val outputFile = File(outputDir, "encoded_${System.currentTimeMillis()}.$extension")
+            val outputFile = generateUniqueOutputFile(outputDir, media.fileName, extension)
 
             viewModelScope.launch {
                 val engine = VideoEncodingEngine(context)
@@ -864,7 +864,7 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
             }
         } else "mp4"
 
-        val outputFile = File(outputDir, "encoded_${System.currentTimeMillis()}.$extension")
+        val outputFile = generateUniqueOutputFile(outputDir, media.fileName, extension)
 
         val targetWidth = if (state.resolutionPreset == ResolutionPreset.DEFAULT) 0 else state.resolutionPreset.width
         val targetHeight = if (state.resolutionPreset == ResolutionPreset.DEFAULT) 0 else state.resolutionPreset.height
@@ -947,6 +947,26 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
             minutes > 0 -> "${minutes}m ${secs}d"
             else -> "${secs}d"
         }
+    }
+
+    private fun generateUniqueOutputFile(outputDir: File, originalFileName: String, targetExtension: String): File {
+        val baseNameWithoutExt = if (originalFileName.contains(".")) {
+            originalFileName.substringBeforeLast(".")
+        } else {
+            originalFileName.ifBlank { "Encoded_Media" }
+        }
+
+        var candidate = File(outputDir, "$baseNameWithoutExt.$targetExtension")
+        if (!candidate.exists()) {
+            return candidate
+        }
+
+        var counter = 1
+        while (candidate.exists()) {
+            candidate = File(outputDir, "${baseNameWithoutExt}_$counter.$targetExtension")
+            counter++
+        }
+        return candidate
     }
 
     override fun onCleared() {
