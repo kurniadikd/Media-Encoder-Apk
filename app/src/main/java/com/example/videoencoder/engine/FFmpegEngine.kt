@@ -24,37 +24,51 @@ class FFmpegEngine(private val context: Context) {
      * Resolves the executable path to libffmpeg.so (or ffmpeg)
      */
     fun getFFmpegBinaryFile(): File {
-        // 1. Primary path: Android nativeLibraryDir (extracted automatically during APK install with +x perms)
+        // 1. Primary path: Android nativeLibraryDir (extracted automatically when extractNativeLibs="true")
         val nativeLibDir = File(context.applicationInfo.nativeLibraryDir)
-        val nativeFffmpeg = File(nativeLibDir, "libffmpeg.so")
-        if (nativeFffmpeg.exists() && nativeFffmpeg.canExecute()) {
-            Log.i("FFmpegEngine", "Using nativeLibraryDir FFmpeg binary: ${nativeFffmpeg.absolutePath}")
-            return nativeFffmpeg
+        val nativeFmpeg = File(nativeLibDir, "libffmpeg.so")
+
+        if (nativeFmpeg.exists() && nativeFmpeg.length() > 0) {
+            try {
+                Runtime.getRuntime().exec("chmod 755 ${nativeFmpeg.absolutePath}").waitFor()
+            } catch (_: Exception) {}
+            Log.i("FFmpegEngine", "Using nativeLibraryDir FFmpeg binary: ${nativeFmpeg.absolutePath}")
+            return nativeFmpeg
         }
 
         // 2. Fallback path: context.filesDir/ffmpeg
-        val filesFffmpeg = File(context.filesDir, "ffmpeg")
-        if (filesFffmpeg.exists() && filesFffmpeg.canExecute()) {
-            return filesFffmpeg
+        val filesFmpeg = File(context.filesDir, "ffmpeg")
+        if (filesFmpeg.exists() && filesFmpeg.length() > 0) {
+            try {
+                Runtime.getRuntime().exec("chmod 755 ${filesFmpeg.absolutePath}").waitFor()
+            } catch (_: Exception) {}
+            return filesFmpeg
         }
 
-        // Copy from nativeLibDir if not executable or from assets fallback
+        // 3. Fail-safe Fallback: Extract libffmpeg.so directly from installed APK zip file
         try {
-            if (nativeFffmpeg.exists()) {
-                nativeFffmpeg.copyTo(filesFffmpeg, overwrite = true)
-            } else {
-                context.assets.open("bin/arm64-v8a/ffmpeg").use { input ->
-                    FileOutputStream(filesFffmpeg).use { output ->
+            val apkPath = context.applicationInfo.sourceDir
+            val zipFile = java.util.zip.ZipFile(apkPath)
+            val entry = zipFile.getEntry("lib/arm64-v8a/libffmpeg.so")
+                ?: zipFile.getEntry("lib/arm64/libffmpeg.so")
+                ?: zipFile.entries().asSequence().firstOrNull { it.name.endsWith("libffmpeg.so") }
+
+            if (entry != null) {
+                zipFile.getInputStream(entry).use { input ->
+                    FileOutputStream(filesFmpeg).use { output ->
                         input.copyTo(output)
                     }
                 }
+                zipFile.close()
+                Runtime.getRuntime().exec("chmod 755 ${filesFmpeg.absolutePath}").waitFor()
+                Log.i("FFmpegEngine", "Successfully extracted libffmpeg.so from APK zip to: ${filesFmpeg.absolutePath}")
+                return filesFmpeg
             }
-            filesFffmpeg.setExecutable(true, false)
         } catch (e: Exception) {
-            Log.e("FFmpegEngine", "Error preparing FFmpeg binary: ${e.message}", e)
+            Log.e("FFmpegEngine", "Failed to extract libffmpeg.so from APK zip: ${e.message}", e)
         }
 
-        return if (filesFffmpeg.exists()) filesFffmpeg else nativeFffmpeg
+        return if (filesFmpeg.exists()) filesFmpeg else nativeFmpeg
     }
 
     /**
