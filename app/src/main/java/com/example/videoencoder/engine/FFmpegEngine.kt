@@ -113,24 +113,34 @@ class FFmpegEngine(private val context: Context) {
             add("-c:v")
             add(vCodec)
 
-            // Preset & CRF / Bitrate
+            // Explicit Pixel Format for maximum device compatibility
+            add("-pix_fmt")
+            add("yuv420p")
+
+            // Preset & Rate Control (CRF vs Bitrate)
             if (vCodec == "libsvtav1") {
-                // SVT-AV1 presets range 0-13 (8 is fast & efficient)
                 val presetVal = config.preset.ifEmpty { "8" }
                 add("-preset")
                 add(presetVal)
-                add("-crf")
-                add(config.crf.coerceIn(15, 50).toString())
+                if (config.targetBitrateBps > 0) {
+                    add("-b:v")
+                    add("${config.targetBitrateBps}")
+                } else {
+                    add("-crf")
+                    add(config.crf.coerceIn(15, 50).toString())
+                }
             } else if (vCodec == "libx264" || vCodec == "libx265") {
                 val presetVal = config.preset.ifEmpty { "medium" }
                 add("-preset")
                 add(presetVal)
-                add("-crf")
-                add(config.crf.coerceIn(15, 50).toString())
-            }
-
-            // Bitrate override if set
-            if (config.targetBitrateBps > 0) {
+                if (config.targetBitrateBps > 0) {
+                    add("-b:v")
+                    add("${config.targetBitrateBps}")
+                } else {
+                    add("-crf")
+                    add(config.crf.coerceIn(15, 50).toString())
+                }
+            } else if (config.targetBitrateBps > 0) {
                 add("-b:v")
                 add("${config.targetBitrateBps}")
             }
@@ -166,14 +176,17 @@ class FFmpegEngine(private val context: Context) {
                     "fdk-aac", "libfdk_aac", "fdk_aac" -> "libfdk_aac"
                     "opus", "libopus" -> "libopus"
                     "mp3", "libmp3lame" -> "libmp3lame"
-                    else -> "libfdk_aac" // Default software audio encoder is FDK-AAC!
+                    "copy" -> "copy"
+                    else -> "aac" // Safe universal native AAC encoder
                 }
                 add("-c:a")
                 add(aCodec)
 
-                val aBitrate = if (config.audioBitrateBps > 0) "${config.audioBitrateBps}" else "128k"
-                add("-b:a")
-                add(aBitrate)
+                if (aCodec != "copy") {
+                    val aBitrate = if (config.audioBitrateBps > 0) "${config.audioBitrateBps}" else "128k"
+                    add("-b:a")
+                    add(aBitrate)
+                }
             }
 
             // Multi-threading optimization for ARM64
@@ -191,6 +204,8 @@ class FFmpegEngine(private val context: Context) {
         val fullCmdStr = cmdList.joinToString(" ")
         Log.i("FFmpegEngine", "Running FFmpeg Command: $fullCmdStr")
 
+        val recentLogLines = mutableListOf<String>()
+
         try {
             val processBuilder = ProcessBuilder(cmdList)
             processBuilder.redirectErrorStream(true)
@@ -200,7 +215,6 @@ class FFmpegEngine(private val context: Context) {
             val reader = BufferedReader(InputStreamReader(process.inputStream))
             var line: String?
 
-            var currentFrame = 0
             var currentFps = 0.0f
             var currentSpeedStr = "1.0x"
             var currentTimeMs = 0L
@@ -211,6 +225,8 @@ class FFmpegEngine(private val context: Context) {
 
             while (reader.readLine().also { line = it } != null) {
                 val currentLine = line ?: continue
+                if (recentLogLines.size > 15) recentLogLines.removeAt(0)
+                recentLogLines.add(currentLine)
 
                 if (currentLine.startsWith("out_time_ms=")) {
                     val matcher = timePattern.matcher(currentLine)
@@ -245,7 +261,10 @@ class FFmpegEngine(private val context: Context) {
                 Log.i("FFmpegEngine", "FFmpeg software encoding completed successfully!")
                 onCompleted()
             } else {
-                onError("FFmpeg keluar dengan kode error: $exitCode")
+                val errReason = recentLogLines.filter { it.isNotBlank() && !it.startsWith("frame=") && !it.startsWith("fps=") && !it.startsWith("progress=") }.takeLast(2).joinToString(" | ")
+                val fullErrMsg = if (errReason.isNotBlank()) "FFmpeg Error ($exitCode): $errReason" else "FFmpeg keluar dengan kode error: $exitCode"
+                Log.e("FFmpegEngine", fullErrMsg)
+                onError(fullErrMsg)
             }
 
         } catch (e: Exception) {
