@@ -24,29 +24,20 @@ class FFmpegEngine(private val context: Context) {
      * Resolves the executable path to libffmpeg.so (or ffmpeg)
      */
     fun getFFmpegBinaryFile(): File {
-        val targetBinary = File(context.filesDir, "ffmpeg_bin")
-
         val nativeLibDir = File(context.applicationInfo.nativeLibraryDir)
         val nativeFmpeg = File(nativeLibDir, "libffmpeg.so")
 
-        // If targetBinary already exists and has valid size (> 50MB), use it!
+        if (nativeFmpeg.exists() && nativeFmpeg.length() > 50_000_000L) {
+            Log.i("FFmpegEngine", "Using nativeLibraryDir libffmpeg.so: ${nativeFmpeg.absolutePath}")
+            return nativeFmpeg
+        }
+
+        val targetBinary = File(context.filesDir, "ffmpeg_bin")
         if (targetBinary.exists() && targetBinary.length() > 50_000_000L) {
             try {
                 Runtime.getRuntime().exec("chmod 755 ${targetBinary.absolutePath}").waitFor()
             } catch (_: Exception) {}
             return targetBinary
-        }
-
-        // Copy from nativeFmpeg to filesDir/ffmpeg_bin
-        if (nativeFmpeg.exists() && nativeFmpeg.length() > 50_000_000L) {
-            try {
-                nativeFmpeg.copyTo(targetBinary, overwrite = true)
-                Runtime.getRuntime().exec("chmod 755 ${targetBinary.absolutePath}").waitFor()
-                Log.i("FFmpegEngine", "Copied libffmpeg.so to filesDir: ${targetBinary.absolutePath}")
-                return targetBinary
-            } catch (e: Exception) {
-                Log.e("FFmpegEngine", "Error copying nativeFmpeg: ${e.message}", e)
-            }
         }
 
         // Fail-safe Fallback: Extract libffmpeg.so directly from installed APK zip file
@@ -98,7 +89,11 @@ class FFmpegEngine(private val context: Context) {
             Runtime.getRuntime().exec("chmod 755 ${ffmpegBinary.absolutePath}").waitFor()
         } catch (_: Exception) {}
 
+        val linker64 = File("/system/bin/linker64")
         val cmdList = mutableListOf<String>().apply {
+            if (linker64.exists()) {
+                add(linker64.absolutePath)
+            }
             add(ffmpegBinary.absolutePath)
             add("-y") // Overwrite output file without asking
 
