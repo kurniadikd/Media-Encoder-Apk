@@ -64,8 +64,7 @@ enum class ResolutionPreset(val label: String, val width: Int, val height: Int) 
 enum class BitrateModeOption(val label: String, val modeValue: Int) {
     DEFAULT("Default (Auto VBR)", 1),
     VBR("VBR (Variable Bitrate)", 1),
-    CBR("CBR (Constant Bitrate)", 2),
-    CQ("CQ (Constant Quality)", 0)
+    CBR("CBR (Constant Bitrate)", 2)
 }
 
 enum class ScaleModeOption(val label: String, val modeValue: Int) {
@@ -962,9 +961,6 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
         val videoBitrateBps = if (media.mediaType == MediaType.AUDIO) 0f else {
             if (state.useAutoBitrate) {
                 (media.sizeBytes * 8f / media.durationSec.coerceAtLeast(1)) * 0.7f
-            } else if (state.bitrateModeOption == BitrateModeOption.CQ) {
-                val qpEstMbps = (30.0 * Math.pow(0.88, ((state.quantizationParameterQP - 12) / 3.0))).toFloat().coerceIn(0.1f, 50.0f)
-                qpEstMbps * 1_000_000f
             } else {
                 state.targetBitrateMbps * 1_000_000f
             }

@@ -1163,65 +1163,45 @@ fun PreprocessScreenView(
                         M3ExpressiveSegmentedButtonGroup(
                             options = listOf(
                                 BitrateModeOption.VBR to "VBR",
-                                BitrateModeOption.CBR to "CBR",
-                                BitrateModeOption.CQ to "CQ"
+                                BitrateModeOption.CBR to "CBR"
                             ),
                             selectedOption = effectiveOption,
                             onOptionSelected = { option -> viewModel.setBitrateModeOption(option) }
                         )
                     }
 
-                    // 3. Adaptive Bitrate / QP Slider Direct Display
+                    // 3. Adaptive Bitrate Slider Direct Display
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        val isCQMode = uiState.bitrateModeOption == BitrateModeOption.CQ
-
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = if (isCQMode) "Quantizer QP" else "Target Video Bitrate",
+                                text = "Target Video Bitrate",
                                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
                             )
                             Text(
-                                text = if (isCQMode) {
-                                    "QP ${uiState.quantizationParameterQP}"
+                                text = if (uiState.targetBitrateMbps < 1.0f) {
+                                    String.format(Locale.US, "%.1f Mbps (%d kbps)", uiState.targetBitrateMbps, (uiState.targetBitrateMbps * 1000).toInt())
                                 } else {
-                                    if (uiState.targetBitrateMbps < 1.0f) {
-                                        String.format(Locale.US, "%.1f Mbps (%d kbps)", uiState.targetBitrateMbps, (uiState.targetBitrateMbps * 1000).toInt())
-                                    } else {
-                                        String.format(Locale.US, "%.1f Mbps", uiState.targetBitrateMbps)
-                                    }
+                                    String.format(Locale.US, "%.1f Mbps", uiState.targetBitrateMbps)
                                 },
                                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                                 color = MaterialTheme.colorScheme.primary
                             )
                         }
 
-                        if (isCQMode) {
-                            Slider(
-                                value = uiState.quantizationParameterQP.toFloat(),
-                                onValueChange = { viewModel.setQuantizationParameterQP(it.toInt()) },
-                                valueRange = 1.0f..51.0f,
-                                colors = SliderDefaults.colors(
-                                    thumbColor = MaterialTheme.colorScheme.primary,
-                                    activeTrackColor = MaterialTheme.colorScheme.primary,
-                                    inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
-                                )
+                        Slider(
+                            value = uiState.targetBitrateMbps,
+                            onValueChange = { viewModel.setTargetBitrate(it) },
+                            valueRange = 0.1f..50.0f,
+                            colors = SliderDefaults.colors(
+                                thumbColor = MaterialTheme.colorScheme.primary,
+                                activeTrackColor = MaterialTheme.colorScheme.primary,
+                                inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
                             )
-                        } else {
-                            Slider(
-                                value = uiState.targetBitrateMbps,
-                                onValueChange = { viewModel.setTargetBitrate(it) },
-                                valueRange = 0.1f..50.0f,
-                                colors = SliderDefaults.colors(
-                                    thumbColor = MaterialTheme.colorScheme.primary,
-                                    activeTrackColor = MaterialTheme.colorScheme.primary,
-                                    inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
-                                )
-                            )
-                        }
+                        )
                     }
 
                     // 4. Target Resolution Dropdown
