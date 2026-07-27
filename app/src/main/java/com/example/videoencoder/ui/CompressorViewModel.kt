@@ -11,6 +11,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.os.IBinder
+import android.provider.MediaStore
 import android.provider.OpenableColumns
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -501,23 +502,17 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
     fun onMediaSelected(uri: Uri, mediaType: MediaType) {
         viewModelScope.launch {
             val context = getApplication<Application>().applicationContext
-            var fileName = "Selected Media"
+            val fileName = getRealFileNameFromUri(context, uri, mediaType)
             var fileSize = 0L
 
             try {
-                context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+                context.contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
                     if (cursor.moveToFirst()) {
-                        val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
                         val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
-                        if (nameIndex != -1) cursor.getString(nameIndex)?.let { fileName = it }
                         if (sizeIndex != -1) fileSize = cursor.getLong(sizeIndex)
                     }
                 }
             } catch (_: Exception) {}
-
-            if (fileName == "Selected Media") {
-                fileName = uri.lastPathSegment ?: "Media_Item"
-            }
 
             if (fileSize == 0L) {
                 try {
@@ -1003,6 +998,77 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
             counter++
         }
         return candidate
+    }
+
+    private fun getRealFileNameFromUri(context: Context, uri: Uri, mediaType: MediaType): String {
+        var fileName: String? = null
+
+        // 1. Try querying DISPLAY_NAME and DATA directly from input URI
+        try {
+            val projection = arrayOf(OpenableColumns.DISPLAY_NAME, MediaStore.MediaColumns.DATA)
+            context.contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    val dataIndex = cursor.getColumnIndex(MediaStore.MediaColumns.DATA)
+
+                    if (nameIndex != -1) {
+                        val name = cursor.getString(nameIndex)
+                        if (!name.isNullOrBlank() && !name.matches(Regex("^1000\\d+\\.\\w+$"))) {
+                            fileName = name
+                        } else if (!name.isNullOrBlank()) {
+                            fileName = name
+                        }
+                    }
+
+                    if ((fileName == null || fileName!!.matches(Regex("^1000\\d+\\.\\w+$"))) && dataIndex != -1) {
+                        val dataPath = cursor.getString(dataIndex)
+                        if (!dataPath.isNullOrBlank()) {
+                            fileName = File(dataPath).name
+                        }
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+
+        // 2. If it's an Android 13+ Photo Picker URI (returns synthetic picker ID like "1000363533.mp4"), resolve real MediaStore file by ID
+        val lastSegment = uri.lastPathSegment
+        if ((fileName == null || fileName!!.matches(Regex("^1000\\d+\\.\\w+$"))) && lastSegment != null) {
+            val mediaId = lastSegment.substringAfterLast("/").toLongOrNull() ?: lastSegment.toLongOrNull()
+            if (mediaId != null) {
+                val contentUri = when (mediaType) {
+                    MediaType.VIDEO -> MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+                    MediaType.IMAGE -> MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+                    MediaType.AUDIO -> MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+                }
+                val selection = "${MediaStore.MediaColumns._ID} = ?"
+                val selectionArgs = arrayOf(mediaId.toString())
+                val projection = arrayOf(MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.DATA)
+
+                try {
+                    context.contentResolver.query(contentUri, projection, selection, selectionArgs, null)?.use { cursor ->
+                        if (cursor.moveToFirst()) {
+                            val dataIdx = cursor.getColumnIndex(MediaStore.MediaColumns.DATA)
+                            val dispIdx = cursor.getColumnIndex(MediaStore.MediaColumns.DISPLAY_NAME)
+
+                            if (dataIdx != -1) {
+                                val dataPath = cursor.getString(dataIdx)
+                                if (!dataPath.isNullOrBlank()) {
+                                    fileName = File(dataPath).name
+                                }
+                            }
+                            if ((fileName == null || fileName!!.matches(Regex("^1000\\d+\\.\\w+$"))) && dispIdx != -1) {
+                                val dispName = cursor.getString(dispIdx)
+                                if (!dispName.isNullOrBlank()) {
+                                    fileName = dispName
+                                }
+                            }
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+
+        return fileName ?: uri.lastPathSegment ?: "Selected_Media"
     }
 
     override fun onCleared() {
