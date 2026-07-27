@@ -198,25 +198,52 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                                 "Menghitung sisa waktu..."
                             }
 
-                            _uiState.update {
-                                it.copy(
+                            val outPath = serviceState.outputPath ?: ""
+                            _uiState.update { current ->
+                                val updatedHistory = current.encodedHistory.map { item ->
+                                    if (item.isEncodingActive || (outPath.isNotBlank() && item.path == outPath)) {
+                                        item.copy(
+                                            isEncodingActive = true,
+                                            progressPercent = currentProgress,
+                                            statusText = "$sizeText • $timeText"
+                                        )
+                                    } else item
+                                }
+                                current.copy(
                                     isEncoding = true,
                                     encodingProgress = currentProgress,
                                     encodingStatusText = "$sizeText • $timeText",
-                                    errorMessage = null
+                                    errorMessage = null,
+                                    encodedHistory = updatedHistory
                                 )
                             }
                         }
                         EncodingService.EncodingStatus.COMPLETED -> {
-                            addLog("Pengodean Hardware Selesai! File output: ${serviceState.outputPath}", LogLevel.SUCCESS, "HARDWARE")
-                            _uiState.update {
-                                it.copy(
+                            val outPath = serviceState.outputPath ?: ""
+                            addLog("Pengodean Hardware Selesai! File output: $outPath", LogLevel.SUCCESS, "HARDWARE")
+                            val completedFile = File(outPath)
+                            _uiState.update { current ->
+                                val updatedHistory = current.encodedHistory.map { item ->
+                                    if (item.isEncodingActive || (outPath.isNotBlank() && item.path == outPath)) {
+                                        item.copy(
+                                            name = completedFile.name,
+                                            path = completedFile.absolutePath,
+                                            sizeBytes = if (completedFile.exists()) completedFile.length() else item.sizeBytes,
+                                            lastModifiedMs = if (completedFile.exists()) completedFile.lastModified() else System.currentTimeMillis(),
+                                            isEncodingActive = false,
+                                            progressPercent = 100,
+                                            statusText = "Selesai"
+                                        )
+                                    } else item
+                                }
+                                current.copy(
                                     isEncoding = false,
                                     encodingProgress = 100,
                                     encodingStatusText = "Selesai!",
                                     completedOutputPath = serviceState.outputPath,
                                     errorMessage = null,
-                                    activeEncodingFileName = null
+                                    activeEncodingFileName = null,
+                                    encodedHistory = updatedHistory
                                 )
                             }
                             refreshEncodedHistory()
@@ -767,24 +794,45 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
         addLog("Memulai pengodean untuk berkas: ${media.fileName} (${media.mediaType.label})", LogLevel.INFO, "ENCODER")
         addLog(paramLog, LogLevel.INFO, "ENCODER_CONFIG")
         encodingStartTimeMs = System.currentTimeMillis()
-
         val initialSizeText = String.format(Locale.US, "0.0 MB / %.1f MB", state.estimatedSizeMb)
 
+        val extension = if (media.mediaType == MediaType.IMAGE) {
+            state.imageFormat.lowercase()
+        } else if (media.mediaType == MediaType.AUDIO) {
+            when (state.audioFormat) {
+                MimeTypes.AUDIO_OPUS -> "opus"
+                MimeTypes.AUDIO_AMR_WB -> "3gp"
+                else -> "m4a"
+            }
+        } else "mp4"
+
+        val outputFile = generateUniqueOutputFile(outputDir, media.fileName, extension)
+
+        val activeItem = EncodedFileItem(
+            name = outputFile.name,
+            path = outputFile.absolutePath,
+            sizeBytes = 0L,
+            lastModifiedMs = System.currentTimeMillis(),
+            mediaType = media.mediaType,
+            isEncodingActive = true,
+            progressPercent = 0,
+            statusText = "$initialSizeText • Menyiapkan..."
+        )
+
         // Switch to MAIN screen immediately (0ms lag!)
-        _uiState.update {
-            it.copy(
+        _uiState.update { current ->
+            val updatedHistory = listOf(activeItem) + current.encodedHistory.filter { it.path != outputFile.absolutePath }
+            current.copy(
                 currentScreen = AppScreen.MAIN,
                 isEncoding = true,
                 encodingProgress = 0,
                 activeEncodingFileName = media.fileName,
-                encodingStatusText = "$initialSizeText • Menyiapkan..."
+                encodingStatusText = "$initialSizeText • Menyiapkan...",
+                encodedHistory = updatedHistory
             )
         }
 
         if (media.mediaType == MediaType.IMAGE) {
-            val extension = state.imageFormat.lowercase()
-            val outputFile = generateUniqueOutputFile(outputDir, media.fileName, extension)
-
             viewModelScope.launch {
                 val engine = VideoEncodingEngine(context)
                 val targetW = if (state.imageScalePercent < 100 && media.width > 0) (media.width * state.imageScalePercent / 100) else 0
@@ -855,16 +903,6 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
             }
             return
         }
-
-        val extension = if (media.mediaType == MediaType.AUDIO) {
-            when (state.audioFormat) {
-                MimeTypes.AUDIO_OPUS -> "opus"
-                MimeTypes.AUDIO_AMR_WB -> "3gp"
-                else -> "m4a"
-            }
-        } else "mp4"
-
-        val outputFile = generateUniqueOutputFile(outputDir, media.fileName, extension)
 
         val targetWidth = if (state.resolutionPreset == ResolutionPreset.DEFAULT) 0 else state.resolutionPreset.width
         val targetHeight = if (state.resolutionPreset == ResolutionPreset.DEFAULT) 0 else state.resolutionPreset.height

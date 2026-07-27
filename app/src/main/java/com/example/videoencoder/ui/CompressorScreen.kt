@@ -1590,7 +1590,7 @@ fun UnifiedMediaListSection(
     onPlay: (EncodedFileItem) -> Unit,
     onShare: (EncodedFileItem) -> Unit
 ) {
-    if (uiState.encodedHistory.isEmpty() && !uiState.isEncoding) {
+    if (uiState.encodedHistory.isEmpty()) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1620,7 +1620,7 @@ fun UnifiedMediaListSection(
                 }
 
                 Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer) {
-                    val totalCount = uiState.encodedHistory.size + (if (uiState.isEncoding) 1 else 0)
+                    val totalCount = uiState.encodedHistory.size
                     Text(
                         text = "$totalCount File",
                         style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
@@ -1629,25 +1629,15 @@ fun UnifiedMediaListSection(
                 }
             }
 
-            // 1. Render Active Encoding Item Card with Circular Wavy Progress Bar
-            if (uiState.isEncoding) {
-                ActiveEncodingCardItem(
-                    fileName = uiState.activeEncodingFileName ?: "Berkas Media",
-                    progressPercent = uiState.encodingProgress,
-                    statusText = uiState.encodingStatusText,
-                    mediaType = uiState.selectedMedia?.mediaType ?: MediaType.VIDEO,
-                    onCancel = onCancelEncoding
-                )
-            }
-
-            // 2. Render Completed History Items
+            // Render Unified Media Items in a single list (active encoding item and finished items share the same card container!)
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 uiState.encodedHistory.forEach { item ->
-                    EncodedHistoryCardItem(
+                    UnifiedMediaCardItem(
                         item = item,
-                        onDelete = { onDelete(item) },
+                        onCancel = onCancelEncoding,
                         onPlay = { onPlay(item) },
-                        onShare = { onShare(item) }
+                        onShare = { onShare(item) },
+                        onDelete = { onDelete(item) }
                     )
                 }
             }
@@ -1656,19 +1646,27 @@ fun UnifiedMediaListSection(
 }
 
 /**
- * Active Encoding Card - Fully Synergistic with EncodedHistoryCardItem
- * Uses M3 Expressive Circular Wavy Progress Indicator encircling the media icon!
+ * Unified Media Card Item
+ * - Uses 1 SINGLE M3ExpressiveCard container for both Active Progress & Finished File
+ * - Smoothly morphs badge, subtext details, and action buttons using native Compose AnimatedContent!
  */
 @Composable
-fun ActiveEncodingCardItem(
-    fileName: String,
-    progressPercent: Int,
-    statusText: String,
-    mediaType: MediaType,
-    onCancel: () -> Unit
+fun UnifiedMediaCardItem(
+    item: EncodedFileItem,
+    onCancel: () -> Unit,
+    onPlay: () -> Unit,
+    onShare: () -> Unit,
+    onDelete: () -> Unit
 ) {
     M3ExpressiveCard(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .animateContentSize(
+                animationSpec = spring(
+                    stiffness = Spring.StiffnessMediumLow,
+                    dampingRatio = Spring.DampingRatioNoBouncy
+                )
+            ),
         shape = RoundedCornerShape(20.dp)
     ) {
         Row(
@@ -1682,77 +1680,174 @@ fun ActiveEncodingCardItem(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.weight(1f)
             ) {
-                // Media Icon surrounded by M3 Expressive Circular Wavy Progress Indicator
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier.size(52.dp)
-                ) {
-                    M3ExpressiveCircularWavyProgressIndicator(
-                        progress = progressPercent / 100f,
-                        modifier = Modifier.fillMaxSize(),
-                        color = MaterialTheme.colorScheme.primary,
-                        trackColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
-                    )
-
-                    // Unfilled icon container during progress with icon color matching progress wavy!
-                    Surface(
-                        shape = CircleShape,
-                        color = Color.Transparent,
-                        modifier = Modifier.size(36.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = when (mediaType) {
-                                    MediaType.IMAGE -> Icons.Default.Image
-                                    MediaType.AUDIO -> Icons.Default.Audiotrack
-                                    else -> Icons.Default.Movie
-                                },
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(22.dp)
+                // 1. Left Badge Icon (Native AnimatedContent morph between Wavy Progress & Solid Circle Badge)
+                AnimatedContent(
+                    targetState = item.isEncodingActive,
+                    transitionSpec = {
+                        (fadeIn(tween(250)) + scaleIn(initialScale = 0.8f)).togetherWith(
+                            fadeOut(tween(200)) + scaleOut(targetScale = 0.8f)
+                        )
+                    },
+                    label = "badge_animation"
+                ) { isActive ->
+                    if (isActive) {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier.size(52.dp)
+                        ) {
+                            M3ExpressiveCircularWavyProgressIndicator(
+                                progress = item.progressPercent / 100f,
+                                modifier = Modifier.fillMaxSize(),
+                                color = MaterialTheme.colorScheme.primary,
+                                trackColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
                             )
+                            Surface(
+                                shape = CircleShape,
+                                color = Color.Transparent,
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = when (item.mediaType) {
+                                            MediaType.IMAGE -> Icons.Default.Image
+                                            MediaType.AUDIO -> Icons.Default.Audiotrack
+                                            else -> Icons.Default.Movie
+                                        },
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            modifier = Modifier.size(52.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = when (item.mediaType) {
+                                        MediaType.IMAGE -> Icons.Default.Image
+                                        MediaType.AUDIO -> Icons.Default.Audiotrack
+                                        else -> Icons.Default.Movie
+                                    },
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(26.dp)
+                                )
+                            }
                         }
                     }
                 }
 
                 Spacer(modifier = Modifier.width(12.dp))
 
+                // 2. Middle Text Details (Native AnimatedContent morph between Progress % / Status & Final Size / Date)
                 Column {
                     Text(
-                        text = fileName,
+                        text = item.name,
                         style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "$progressPercent%",
-                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold),
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Text("•", style = MaterialTheme.typography.labelSmall)
-                        Text(
-                            text = statusText,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+
+                    AnimatedContent(
+                        targetState = item.isEncodingActive,
+                        transitionSpec = {
+                            fadeIn(tween(200)).togetherWith(fadeOut(tween(150)))
+                        },
+                        label = "subtext_animation"
+                    ) { isActive ->
+                        if (isActive) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "${item.progressPercent.coerceIn(0, 100)}%",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold),
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Text("•", style = MaterialTheme.typography.labelSmall)
+                                Text(
+                                    text = item.statusText,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        } else {
+                            val formattedSize = remember(item.sizeBytes) {
+                                String.format(Locale.US, "%.1f MB", item.sizeBytes / 1_000_000f)
+                            }
+                            val formattedDate = remember(item.lastModifiedMs) {
+                                if (item.lastModifiedMs > 0) {
+                                    SimpleDateFormat("d MMM, HH:mm", Locale.getDefault()).format(Date(item.lastModifiedMs))
+                                } else "Baru saja"
+                            }
+
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = formattedSize,
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Text("•", style = MaterialTheme.typography.labelSmall)
+                                Text(
+                                    text = formattedDate,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                )
+                            }
+                        }
                     }
                 }
             }
 
-            M3ExpressiveFilledTonalIconButton(
-                onClick = onCancel,
-                colors = IconButtonDefaults.filledTonalIconButtonColors(
-                    containerColor = MaterialTheme.colorScheme.errorContainer,
-                    contentColor = MaterialTheme.colorScheme.onErrorContainer
-                )
-            ) {
-                Icon(Icons.Default.Stop, contentDescription = "Batal")
+            Spacer(modifier = Modifier.width(8.dp))
+
+            // 3. Right Action Buttons (Native AnimatedContent morph between Stop Button & Play/Share/Delete Buttons)
+            AnimatedContent(
+                targetState = item.isEncodingActive,
+                transitionSpec = {
+                    (fadeIn(tween(250)) + scaleIn(initialScale = 0.8f)).togetherWith(
+                        fadeOut(tween(150)) + scaleOut(targetScale = 0.8f)
+                    )
+                },
+                label = "actions_animation"
+            ) { isActive ->
+                if (isActive) {
+                    M3ExpressiveFilledTonalIconButton(
+                        onClick = onCancel,
+                        colors = IconButtonDefaults.filledTonalIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer,
+                            contentColor = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                    ) {
+                        Icon(Icons.Default.Stop, contentDescription = "Batal")
+                    }
+                } else {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        M3ExpressiveIconButton(onClick = onPlay) {
+                            Icon(Icons.Default.PlayArrow, contentDescription = "Putar Media")
+                        }
+                        M3ExpressiveIconButton(onClick = onShare) {
+                            Icon(Icons.Default.Share, contentDescription = "Bagikan Media")
+                        }
+                        M3ExpressiveIconButton(onClick = onDelete) {
+                            Icon(Icons.Default.Delete, contentDescription = "Hapus Media")
+                        }
+                    }
+                }
             }
         }
     }
@@ -1771,7 +1866,7 @@ fun M3ExpressiveCircularWavyProgressIndicator(
     trackColor: Color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
 ) {
     val animatedProgress by animateFloatAsState(
-        targetValue = progress.coerceIn(0.01f, 1.0f),
+        targetValue = progress.coerceIn(0.0f, 1.0f),
         animationSpec = tween(durationMillis = 200, easing = LinearEasing),
         label = "granular_progress"
     )
@@ -1864,81 +1959,5 @@ fun M3ExpressiveCircularWavyProgressIndicator(
             color = color,
             style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
         )
-    }
-}
-
-@Composable
-fun EncodedHistoryCardItem(
-    item: EncodedFileItem,
-    onDelete: () -> Unit,
-    onPlay: () -> Unit,
-    onShare: () -> Unit
-) {
-    val sizeMb = String.format(Locale.US, "%.1f MB", item.sizeBytes / 1_000_000f)
-    val dateFormat = SimpleDateFormat("dd MMM, HH:mm", Locale.getDefault())
-    val dateStr = dateFormat.format(Date(item.lastModifiedMs))
-
-    M3ExpressiveCard(
-        modifier = Modifier.fillMaxWidth(),
-        onClick = onPlay,
-        shape = RoundedCornerShape(20.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.weight(1f)
-            ) {
-                Surface(
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(44.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = when (item.mediaType) {
-                                MediaType.IMAGE -> Icons.Default.Image
-                                MediaType.AUDIO -> Icons.Default.Audiotrack
-                                else -> Icons.Default.Movie
-                            },
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier.size(22.dp)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.width(12.dp))
-
-                Column {
-                    Text(item.name, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(sizeMb, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold), color = MaterialTheme.colorScheme.primary)
-                        Text("•", style = MaterialTheme.typography.labelSmall)
-                        Text(dateStr, style = MaterialTheme.typography.labelSmall)
-                    }
-                }
-            }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                M3ExpressiveFilledTonalIconButton(onClick = onPlay) {
-                    Icon(Icons.Default.PlayArrow, contentDescription = "Play/View")
-                }
-                M3ExpressiveFilledTonalIconButton(onClick = onShare) {
-                    Icon(Icons.Default.Share, contentDescription = "Share")
-                }
-                M3ExpressiveFilledTonalIconButton(onClick = onDelete) {
-                    Icon(Icons.Default.Delete, contentDescription = "Delete")
-                }
-            }
-        }
     }
 }
