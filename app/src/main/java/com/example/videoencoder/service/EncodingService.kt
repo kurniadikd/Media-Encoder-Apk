@@ -19,7 +19,9 @@ import androidx.media3.effect.Presentation
 import androidx.media3.transformer.ProgressHolder
 import androidx.media3.transformer.Transformer
 import com.example.videoencoder.MainActivity
+import com.example.videoencoder.engine.EncoderEngineType
 import com.example.videoencoder.engine.EncodingConfig
+import com.example.videoencoder.engine.FFmpegEngine
 import com.example.videoencoder.engine.VideoEncodingEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -52,6 +54,7 @@ class EncodingService : Service() {
     private val scope = CoroutineScope(Dispatchers.Main + Job())
 
     private var activeTransformer: Transformer? = null
+    private var ffmpegEngine: FFmpegEngine? = null
     private var progressJob: Job? = null
     private var wakeLock: android.os.PowerManager.WakeLock? = null
 
@@ -84,10 +87,17 @@ class EncodingService : Service() {
                 val audioBitrate = intent.getIntExtra(EXTRA_AUDIO_BITRATE, 128_000)
                 val isAudioMuted = intent.getBooleanExtra(EXTRA_AUDIO_MUTED, false)
                 val rotation = intent.getFloatExtra(EXTRA_ROTATION, 0.0f)
+                val engineTypeStr = intent.getStringExtra(EXTRA_ENCODER_ENGINE) ?: "HARDWARE"
+                val encoderEngine = if (engineTypeStr.equals("SOFTWARE", ignoreCase = true)) EncoderEngineType.SOFTWARE else EncoderEngineType.HARDWARE
+                val preset = intent.getStringExtra(EXTRA_PRESET) ?: "8"
+                val crf = intent.getIntExtra(EXTRA_CRF, 28)
 
                 if (inputUriStr != null && outputPath != null) {
                     val config = EncodingConfig(
+                        encoderEngine = encoderEngine,
                         videoFormat = videoFormat,
+                        preset = preset,
+                        crf = crf,
                         targetBitrateBps = bitrate,
                         bitrateMode = bitrateMode,
                         targetWidth = width,
@@ -113,6 +123,12 @@ class EncodingService : Service() {
     fun startEncoding(inputUri: Uri, outputPath: String, config: EncodingConfig) {
         stopSelfJob?.cancel()
         stopSelfJob = null
+
+        if (config.encoderEngine == EncoderEngineType.SOFTWARE) {
+            startSoftwareEncoding(inputUri, outputPath, config)
+            return
+        }
+
         val notification = createNotification(0, "Memulai Pengodean Hardware...", isFinished = false)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(
@@ -274,7 +290,148 @@ class EncodingService : Service() {
         }
     }
 
+    private fun startSoftwareEncoding(inputUri: Uri, outputPath: String, config: EncodingConfig) {
+        val targetFile = File(outputPath)
+        targetFile.parentFile?.mkdirs()
+        if (targetFile.exists()) {
+            try { targetFile.delete() } catch (_: Exception) {}
+        }
+
+        _progressState.value = ServiceProgressState(
+            status = EncodingStatus.RUNNING,
+            progressPercent = 0,
+            outputPath = targetFile.absolutePath
+        )
+
+        val inputPath = getRealPathFromUri(applicationContext, inputUri) ?: inputUri.toString()
+        val totalDurationMs = getMediaDurationMs(applicationContext, inputUri)
+
+        val ffmpeg = FFmpegEngine(applicationContext)
+        ffmpegEngine = ffmpeg
+
+        val notification = createNotification(0, "Memulai Pengodean Software (FFmpeg)...", isFinished = false)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(
+                NOTIFICATION_ID,
+                notification,
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROCESSING
+                } else {
+                    0
+                }
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
+
+        scope.launch(Dispatchers.IO) {
+            ffmpeg.executeEncoding(
+                inputPath = inputPath,
+                outputPath = outputPath,
+                config = config,
+                totalDurationMs = totalDurationMs,
+                onProgress = { percent, _, _, statusText ->
+                    _progressState.value = ServiceProgressState(
+                        status = EncodingStatus.RUNNING,
+                        progressPercent = percent,
+                        outputPath = targetFile.absolutePath
+                    )
+                    updateNotification(percent, "Software: $statusText", isFinished = false)
+                },
+                onCompleted = {
+                    try {
+                        val resolver = applicationContext.contentResolver
+                        val contentValues = android.content.ContentValues().apply {
+                            put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, targetFile.name)
+                            put(android.provider.MediaStore.MediaColumns.SIZE, targetFile.length())
+                            put(android.provider.MediaStore.MediaColumns.DATE_ADDED, System.currentTimeMillis() / 1000)
+                            put(android.provider.MediaStore.MediaColumns.DATE_MODIFIED, System.currentTimeMillis() / 1000)
+                            val mime = if (config.videoFormat.contains("av1", ignoreCase = true)) "video/mp4" else "video/mp4"
+                            put(android.provider.MediaStore.MediaColumns.MIME_TYPE, mime)
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, "Media Encoder")
+                                put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0)
+                            }
+                        }
+                        val contentUri = android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+                        resolver.insert(contentUri, contentValues)
+
+                        android.media.MediaScannerConnection.scanFile(
+                            applicationContext,
+                            arrayOf(targetFile.absolutePath),
+                            null,
+                            null
+                        )
+                    } catch (_: Exception) {}
+
+                    scope.launch(Dispatchers.Main) {
+                        _progressState.value = ServiceProgressState(
+                            status = EncodingStatus.COMPLETED,
+                            progressPercent = 100,
+                            outputPath = targetFile.absolutePath
+                        )
+                        updateNotification(100, "Pengodean Software Selesai! 🎉", isFinished = true)
+                        stopSelfWithDelay()
+                    }
+                },
+                onError = { errorMsg ->
+                    scope.launch(Dispatchers.Main) {
+                        _progressState.value = ServiceProgressState(
+                            status = EncodingStatus.ERROR,
+                            progressPercent = 0,
+                            errorMessage = errorMsg
+                        )
+                        updateNotification(0, "Pengodean Software Gagal", isFinished = true)
+                        stopSelfWithDelay()
+                    }
+                }
+            )
+        }
+    }
+
+    private fun getRealPathFromUri(context: Context, uri: Uri): String? {
+        if (uri.scheme == "file") return uri.path
+        if (uri.scheme == "content") {
+            try {
+                context.contentResolver.query(uri, arrayOf(android.provider.MediaStore.MediaColumns.DATA), null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val idx = cursor.getColumnIndex(android.provider.MediaStore.MediaColumns.DATA)
+                        if (idx != -1) {
+                            val path = cursor.getString(idx)
+                            if (!path.isNullOrBlank() && File(path).exists()) return path
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+
+            try {
+                val tempFile = File(context.cacheDir, "ffmpeg_input_temp_${System.currentTimeMillis()}.mp4")
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    java.io.FileOutputStream(tempFile).use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                if (tempFile.exists() && tempFile.length() > 0) return tempFile.absolutePath
+            } catch (_: Exception) {}
+        }
+        return uri.path
+    }
+
+    private fun getMediaDurationMs(context: Context, uri: Uri): Long {
+        return try {
+            val retriever = android.media.MediaMetadataRetriever()
+            retriever.setDataSource(context, uri)
+            val durationStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
+            retriever.release()
+            durationStr?.toLongOrNull() ?: 0L
+        } catch (_: Exception) {
+            0L
+        }
+    }
+
     fun cancelEncoding() {
+        ffmpegEngine?.cancelEncoding()
+        ffmpegEngine = null
         activeTransformer?.cancel()
         progressJob?.cancel()
 
@@ -374,6 +531,7 @@ class EncodingService : Service() {
     override fun onDestroy() {
         progressJob?.cancel()
         activeTransformer?.cancel()
+        ffmpegEngine?.cancelEncoding()
         super.onDestroy()
     }
 
@@ -398,5 +556,8 @@ class EncodingService : Service() {
         const val EXTRA_AUDIO_BITRATE = "extra_audio_bitrate"
         const val EXTRA_AUDIO_MUTED = "extra_audio_muted"
         const val EXTRA_ROTATION = "extra_rotation"
+        const val EXTRA_ENCODER_ENGINE = "extra_encoder_engine"
+        const val EXTRA_PRESET = "extra_preset"
+        const val EXTRA_CRF = "extra_crf"
     }
 }

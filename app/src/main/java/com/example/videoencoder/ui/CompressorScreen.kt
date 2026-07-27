@@ -1190,16 +1190,24 @@ fun PreprocessScreenView(
                         else -> "AVC (H.264)"
                     }
 
-                    val codecOptions = if (uiState.availableVideoEncoders.isNotEmpty()) {
-                        uiState.availableVideoEncoders.map { (key, label) ->
-                            if (key == "DEFAULT") key to fileCodecLabel else key to label
-                        }
+                    val codecOptions = if (uiState.selectedMedia?.mediaType == MediaType.AUDIO) {
+                        listOf(
+                            "DEFAULT" to fileCodecLabel,
+                            "libfdk_aac" to "🧪 FDK-AAC (Software AAC)",
+                            "libopus" to "🧪 Opus (Software Audio)",
+                            "libmp3lame" to "🧪 MP3 (Software Audio)",
+                            MimeTypes.AUDIO_AAC to "⚡ AAC (Hardware)",
+                            MimeTypes.AUDIO_AMR_NB to "⚡ AMR-NB (Hardware)"
+                        )
                     } else listOf(
                         "DEFAULT" to fileCodecLabel,
-                        MimeTypes.VIDEO_H265 to "HEVC (H.265)",
-                        MimeTypes.VIDEO_H264 to "AVC (H.264)",
-                        MimeTypes.VIDEO_VP9 to "VP9",
-                        MimeTypes.VIDEO_AV1 to "AV1"
+                        "libsvtav1" to "🧪 SVT-AV1 (Software AV1)",
+                        "libx264" to "🧪 x264 (Software H.264)",
+                        "libx265" to "🧪 x265 (Software H.265)",
+                        MimeTypes.VIDEO_H265 to "⚡ HEVC (H.265 Hardware)",
+                        MimeTypes.VIDEO_H264 to "⚡ AVC (H.264 Hardware)",
+                        MimeTypes.VIDEO_VP9 to "⚡ VP9 (Hardware)",
+                        MimeTypes.VIDEO_AV1 to "⚡ AV1 (Hardware)"
                     )
 
                     M3DropdownSelector(

@@ -20,8 +20,15 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
 
+enum class EncoderEngineType {
+    HARDWARE, SOFTWARE
+}
+
 data class EncodingConfig(
-    val videoFormat: String = "DEFAULT",            // "DEFAULT" or specific MIME type
+    val encoderEngine: EncoderEngineType = EncoderEngineType.HARDWARE,
+    val videoFormat: String = "DEFAULT",            // "DEFAULT" or specific MIME type / "libsvtav1", "libx264", "libx265"
+    val preset: String = "8",                       // SVT-AV1 preset (0-13) or x264/x265 preset
+    val crf: Int = 28,                              // Constant Rate Factor (15-50)
     val targetBitrateBps: Int = 0,                  // 0 = Auto / Default Encoder Bitrate
     val bitrateMode: Int = 1,                       // 1=VBR, 2=CBR, 0=CQ
     val targetWidth: Int = 0,                       // 0 = Original Resolution
@@ -29,7 +36,7 @@ data class EncodingConfig(
     val scaleMode: Int = Presentation.LAYOUT_SCALE_TO_FIT,
     val frameRate: Int = 0,                         // 0 = Original FPS
     val iFrameIntervalSec: Float = 0.0f,            // 0 = Auto Keyframe
-    val audioFormat: String = "DEFAULT",            // "DEFAULT" or specific Audio MIME type
+    val audioFormat: String = "DEFAULT",            // "DEFAULT" or "libfdk_aac", "libopus", "libmp3lame"
     val audioBitrateBps: Int = 0,                   // 0 = Auto Audio Bitrate
     val isAudioMuted: Boolean = false,               // Remove audio
     val rotationDegrees: Float = 0.0f,               // 0, 90, 180, 270

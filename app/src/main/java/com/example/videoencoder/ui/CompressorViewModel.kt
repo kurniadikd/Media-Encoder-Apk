@@ -1260,6 +1260,13 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                 putExtra(EncodingService.EXTRA_AUDIO_BITRATE, audioBitrateBps)
                 putExtra(EncodingService.EXTRA_AUDIO_MUTED, nextTask.isAudioMuted)
                 putExtra(EncodingService.EXTRA_ROTATION, nextTask.rotationDegrees)
+
+                val isSoftwareCodec = nextTask.outputFormat.lowercase().let {
+                    it.contains("av1") || it.contains("x264") || it.contains("x265") || it.contains("svt") || it.contains("fdk") || it.contains("opus") || it == "software"
+                }
+                putExtra(EncodingService.EXTRA_ENCODER_ENGINE, if (isSoftwareCodec) "SOFTWARE" else "HARDWARE")
+                putExtra(EncodingService.EXTRA_PRESET, "8")
+                putExtra(EncodingService.EXTRA_CRF, 28)
             }
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
