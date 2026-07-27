@@ -88,35 +88,7 @@ class VideoEncodingEngine(private val context: Context) {
         return builder.build()
     }
 
-    fun prepareInputUri(inputUri: Uri): Uri {
-        if (inputUri.scheme == "file") return inputUri
-
-        return try {
-            val cacheDir = context.cacheDir
-            cacheDir.listFiles()?.forEach { file ->
-                if (file.name.startsWith("input_media_temp_")) {
-                    try { file.delete() } catch (_: Exception) {}
-                }
-            }
-
-            val cacheFile = File(cacheDir, "input_media_temp_${System.currentTimeMillis()}.tmp")
-            context.contentResolver.openInputStream(inputUri)?.use { input ->
-                cacheFile.outputStream().use { output ->
-                    input.copyTo(output)
-                }
-            }
-            if (cacheFile.exists() && cacheFile.length() > 0) {
-                Uri.fromFile(cacheFile)
-            } else {
-                inputUri
-            }
-        } catch (_: Exception) {
-            inputUri
-        }
-    }
-
     fun createEditedMediaItem(inputUri: Uri, config: EncodingConfig): EditedMediaItem {
-        val seekableUri = prepareInputUri(inputUri)
         val videoEffects = mutableListOf<androidx.media3.common.Effect>()
 
         if (config.targetWidth > 0 && config.targetHeight > 0) {
@@ -133,7 +105,7 @@ class VideoEncodingEngine(private val context: Context) {
             videoEffects.add(rotationEffect)
         }
 
-        val builder = EditedMediaItem.Builder(MediaItem.fromUri(seekableUri))
+        val builder = EditedMediaItem.Builder(MediaItem.fromUri(inputUri))
 
         if (videoEffects.isNotEmpty()) {
             builder.setEffects(Effects(emptyList(), videoEffects))
@@ -147,7 +119,7 @@ class VideoEncodingEngine(private val context: Context) {
     }
 
     /**
-     * Encodes and compresses Image to JPEG, PNG, or WEBP with scaling & quality options
+     * Encodes and compresses Image directly to JPEG, PNG, or WEBP with scaling & quality options (Zero-Copy!)
      */
     fun encodeImage(
         inputUri: Uri,
@@ -158,11 +130,10 @@ class VideoEncodingEngine(private val context: Context) {
         targetHeight: Int
     ): Boolean {
         return try {
-            val seekableUri = prepareInputUri(inputUri)
-            val bitmap = if (seekableUri.scheme == "file" && seekableUri.path != null) {
-                BitmapFactory.decodeFile(seekableUri.path)
+            val bitmap = if (inputUri.scheme == "file" && inputUri.path != null) {
+                BitmapFactory.decodeFile(inputUri.path)
             } else {
-                context.contentResolver.openInputStream(seekableUri)?.use { input ->
+                context.contentResolver.openInputStream(inputUri)?.use { input ->
                     BitmapFactory.decodeStream(input)
                 }
             } ?: return false
