@@ -646,7 +646,12 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
         val item = action.item
         when (action.type) {
             PendingActionType.DELETE_FILE -> {
-                deleteHistoryItem(item.path)
+                _uiState.update { it.copy(pendingRemovalPaths = it.pendingRemovalPaths + item.path) }
+                viewModelScope.launch {
+                    delay(200)
+                    deleteHistoryItem(item.path)
+                    _uiState.update { it.copy(pendingRemovalPaths = it.pendingRemovalPaths - item.path) }
+                }
             }
             PendingActionType.REMOVE_FROM_QUEUE -> {
                 synchronized(encodingQueue) {

@@ -1750,17 +1750,23 @@ fun UnifiedMediaListSection(
                 }
             }
 
-            // Render Unified Media Items smoothly
+            // Render Unified Media Items smoothly with native Expressive Motion animations
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 uiState.encodedHistory.forEach { item ->
                     key(item.id) {
-                        UnifiedMediaCardItem(
-                            item = item,
-                            onCancel = onCancelEncoding,
-                            onPlay = { onPlay(item) },
-                            onShare = { onShare(item) },
-                            onDelete = { onDelete(item) }
-                        )
+                        AnimatedVisibility(
+                            visible = item.path !in uiState.pendingRemovalPaths,
+                            enter = fadeIn(spring(stiffness = Spring.StiffnessMediumLow)) + expandVertically(spring(stiffness = Spring.StiffnessMediumLow)),
+                            exit = fadeOut(tween(180)) + shrinkVertically(spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioNoBouncy)) + scaleOut(targetScale = 0.92f)
+                        ) {
+                            UnifiedMediaCardItem(
+                                item = item,
+                                onCancel = onCancelEncoding,
+                                onPlay = { onPlay(item) },
+                                onShare = { onShare(item) },
+                                onDelete = { onDelete(item) }
+                            )
+                        }
                     }
                 }
             }
