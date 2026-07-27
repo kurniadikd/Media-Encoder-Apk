@@ -23,6 +23,7 @@ import com.example.videoencoder.engine.VideoEncodingEngine
 import com.example.videoencoder.service.EncodingService
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -96,15 +97,63 @@ data class SelectedMediaItem(
     val videoMime: String? = null
 )
 
+enum class QueueStatus {
+    QUEUED,     // Waiting in queue
+    ENCODING,   // Active encoding
+    COMPLETED,  // Finished
+    FAILED,     // Failed
+    CANCELLED   // Cancelled
+}
+
+enum class PendingActionType {
+    DELETE_FILE,
+    REMOVE_FROM_QUEUE,
+    STOP_ENCODING
+}
+
+data class PendingConfirmAction(
+    val type: PendingActionType,
+    val item: EncodedFileItem
+)
+
 data class EncodedFileItem(
     val name: String,
     val path: String,
+    val id: String = path,
     val sizeBytes: Long,
     val lastModifiedMs: Long,
     val mediaType: MediaType,
     val isEncodingActive: Boolean = false,
+    val isQueued: Boolean = false,
+    val queueStatus: QueueStatus = QueueStatus.COMPLETED,
     val progressPercent: Int = 100,
     val statusText: String = ""
+)
+
+data class EncodingTask(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val media: SelectedMediaItem,
+    val outputFile: File,
+    val paramLog: String,
+    val estimatedSizeMb: Float,
+    val outputFormat: String,
+    val targetBitrateMbps: Float,
+    val useAutoBitrate: Boolean,
+    val bitrateModeOption: BitrateModeOption,
+    val resolutionPreset: ResolutionPreset,
+    val scaleModeOption: ScaleModeOption,
+    val frameRate: Int,
+    val iFrameIntervalSec: Float,
+    val audioFormat: String,
+    val audioBitrateKbps: Int,
+    val isAudioMuted: Boolean,
+    val rotationDegrees: Float,
+    val imageFormat: String,
+    val imageQuality: Int,
+    val imageScalePercent: Int,
+    var status: QueueStatus = QueueStatus.QUEUED,
+    var progressPercent: Int = 0,
+    var statusText: String = "Dalam Antrean"
 )
 
 data class CompressorUiState(
@@ -151,6 +200,7 @@ data class CompressorUiState(
     val logList: List<LogEntry> = emptyList(),
 
     // Confirmation Dialog State
+    val pendingConfirmAction: PendingConfirmAction? = null,
     val pendingDeleteItem: EncodedFileItem? = null,
     val showCancelEncodingDialog: Boolean = false,
     val pendingRemovalPaths: Set<String> = emptySet()
@@ -164,6 +214,10 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
     private var encodingService: EncodingService? = null
     private var isServiceBound = false
     private var encodingStartTimeMs: Long = 0L
+
+    private val encodingQueue = java.util.Collections.synchronizedList(mutableListOf<EncodingTask>())
+    private var activeTaskId: String? = null
+    private var activeImageJob: Job? = null
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
@@ -208,9 +262,11 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                             val outPath = serviceState.outputPath ?: ""
                             _uiState.update { current ->
                                 val updatedHistory = current.encodedHistory.map { item ->
-                                    if (item.isEncodingActive || (outPath.isNotBlank() && item.path == outPath)) {
+                                    if (item.isEncodingActive || item.id == activeTaskId || (outPath.isNotBlank() && item.path == outPath)) {
                                         item.copy(
                                             isEncodingActive = true,
+                                            isQueued = false,
+                                            queueStatus = QueueStatus.ENCODING,
                                             progressPercent = currentProgress,
                                             statusText = "$sizeText • $timeText"
                                         )
@@ -227,17 +283,23 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                         }
                         EncodingService.EncodingStatus.COMPLETED -> {
                             val outPath = serviceState.outputPath ?: ""
+                            val currentTask = synchronized(encodingQueue) { encodingQueue.firstOrNull { it.id == activeTaskId || it.outputFile.absolutePath == outPath } }
+                            if (currentTask != null) {
+                                currentTask.status = QueueStatus.COMPLETED
+                            }
                             addLog("Pengodean Hardware Selesai! File output: $outPath", LogLevel.SUCCESS, "HARDWARE")
                             val completedFile = File(outPath)
                             _uiState.update { current ->
                                 val updatedHistory = current.encodedHistory.map { item ->
-                                    if (item.isEncodingActive || (outPath.isNotBlank() && item.path == outPath)) {
+                                    if (item.isEncodingActive || item.id == activeTaskId || (outPath.isNotBlank() && item.path == outPath)) {
                                         item.copy(
                                             name = completedFile.name,
                                             path = completedFile.absolutePath,
                                             sizeBytes = if (completedFile.exists()) completedFile.length() else item.sizeBytes,
                                             lastModifiedMs = if (completedFile.exists()) completedFile.lastModified() else System.currentTimeMillis(),
                                             isEncodingActive = false,
+                                            isQueued = false,
+                                            queueStatus = QueueStatus.COMPLETED,
                                             progressPercent = 100,
                                             statusText = "Selesai"
                                         )
@@ -253,30 +315,68 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                                     encodedHistory = updatedHistory
                                 )
                             }
+                            activeTaskId = null
                             refreshEncodedHistory()
+                            processNextInQueue()
                         }
                         EncodingService.EncodingStatus.ERROR -> {
+                            val currentTask = synchronized(encodingQueue) { encodingQueue.firstOrNull { it.id == activeTaskId } }
+                            if (currentTask != null) {
+                                currentTask.status = QueueStatus.FAILED
+                            }
                             addLog("Pengodean Hardware Gagal: ${serviceState.errorMessage}", LogLevel.ERROR, "HARDWARE")
-                            _uiState.update {
-                                it.copy(
+                            _uiState.update { current ->
+                                val updatedHistory = current.encodedHistory.map { item ->
+                                    if (item.isEncodingActive || item.id == activeTaskId) {
+                                        item.copy(
+                                            isEncodingActive = false,
+                                            isQueued = false,
+                                            queueStatus = QueueStatus.FAILED,
+                                            progressPercent = 0,
+                                            statusText = "Gagal"
+                                        )
+                                    } else item
+                                }
+                                current.copy(
                                     isEncoding = false,
                                     encodingProgress = 0,
                                     encodingStatusText = "Gagal",
                                     errorMessage = serviceState.errorMessage,
-                                    activeEncodingFileName = null
+                                    activeEncodingFileName = null,
+                                    encodedHistory = updatedHistory
                                 )
                             }
+                            activeTaskId = null
+                            processNextInQueue()
                         }
                         EncodingService.EncodingStatus.CANCELLED -> {
+                            val currentTask = synchronized(encodingQueue) { encodingQueue.firstOrNull { it.id == activeTaskId } }
+                            if (currentTask != null) {
+                                currentTask.status = QueueStatus.CANCELLED
+                            }
                             addLog("Proses Pengodean dibatalkan oleh pengguna.", LogLevel.WARNING, "USER")
-                            _uiState.update {
-                                it.copy(
+                            _uiState.update { current ->
+                                val updatedHistory = current.encodedHistory.map { item ->
+                                    if (item.isEncodingActive || item.id == activeTaskId) {
+                                        item.copy(
+                                            isEncodingActive = false,
+                                            isQueued = false,
+                                            queueStatus = QueueStatus.CANCELLED,
+                                            progressPercent = 0,
+                                            statusText = "Dibatalkan"
+                                        )
+                                    } else item
+                                }
+                                current.copy(
                                     isEncoding = false,
                                     encodingProgress = 0,
                                     encodingStatusText = "Dibatalkan",
-                                    activeEncodingFileName = null
+                                    activeEncodingFileName = null,
+                                    encodedHistory = updatedHistory
                                 )
                             }
+                            activeTaskId = null
+                            processNextInQueue()
                         }
                         EncodingService.EncodingStatus.IDLE -> {}
                     }
@@ -470,7 +570,14 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
             }
 
             val sortedFiles = fileMap.values.sortedByDescending { it.lastModifiedMs }
-            _uiState.update { it.copy(encodedHistory = sortedFiles) }
+            _uiState.update { current ->
+                val activeOrQueuedItems = current.encodedHistory.filter {
+                    it.isEncodingActive || it.isQueued || it.queueStatus == QueueStatus.QUEUED || it.queueStatus == QueueStatus.ENCODING
+                }
+                val activeOrQueuedPaths = activeOrQueuedItems.map { it.path }.toSet()
+                val mergedList = activeOrQueuedItems + sortedFiles.filter { it.path !in activeOrQueuedPaths }
+                current.copy(encodedHistory = mergedList)
+            }
         }
     }
 
@@ -523,35 +630,78 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    fun requestDeleteHistoryItem(item: EncodedFileItem) {
-        _uiState.update { it.copy(pendingDeleteItem = item) }
+    fun requestConfirmAction(item: EncodedFileItem) {
+        val actionType = when {
+            item.isEncodingActive -> PendingActionType.STOP_ENCODING
+            item.isQueued || item.queueStatus == QueueStatus.QUEUED -> PendingActionType.REMOVE_FROM_QUEUE
+            else -> PendingActionType.DELETE_FILE
+        }
+        _uiState.update { it.copy(pendingConfirmAction = PendingConfirmAction(actionType, item)) }
     }
 
-    fun confirmDeleteHistoryItem() {
-        val item = _uiState.value.pendingDeleteItem ?: return
-        _uiState.update { it.copy(pendingDeleteItem = null, pendingRemovalPaths = it.pendingRemovalPaths + item.path) }
-        viewModelScope.launch {
-            delay(350)
-            deleteHistoryItem(item.path)
-            _uiState.update { it.copy(pendingRemovalPaths = it.pendingRemovalPaths - item.path) }
+    fun confirmPendingAction() {
+        val action = _uiState.value.pendingConfirmAction ?: return
+        _uiState.update { it.copy(pendingConfirmAction = null) }
+
+        val item = action.item
+        when (action.type) {
+            PendingActionType.DELETE_FILE -> {
+                _uiState.update { it.copy(pendingRemovalPaths = it.pendingRemovalPaths + item.path) }
+                viewModelScope.launch {
+                    delay(350)
+                    deleteHistoryItem(item.path)
+                    _uiState.update { it.copy(pendingRemovalPaths = it.pendingRemovalPaths - item.path) }
+                }
+            }
+            PendingActionType.REMOVE_FROM_QUEUE -> {
+                synchronized(encodingQueue) {
+                    encodingQueue.removeAll { it.id == item.id || it.outputFile.absolutePath == item.path }
+                }
+                _uiState.update { current ->
+                    current.copy(
+                        encodedHistory = current.encodedHistory.filter { it.id != item.id && it.path != item.path }
+                    )
+                }
+                addLog("Berkas \"${item.name}\" dihapus dari antrean.", LogLevel.INFO, "QUEUE")
+            }
+            PendingActionType.STOP_ENCODING -> {
+                cancelActiveEncoding(item)
+            }
         }
     }
 
+    fun dismissConfirmDialog() {
+        _uiState.update { it.copy(pendingConfirmAction = null, pendingDeleteItem = null, showCancelEncodingDialog = false) }
+    }
+
+    fun requestDeleteHistoryItem(item: EncodedFileItem) {
+        requestConfirmAction(item)
+    }
+
+    fun confirmDeleteHistoryItem() {
+        confirmPendingAction()
+    }
+
     fun dismissDeleteDialog() {
-        _uiState.update { it.copy(pendingDeleteItem = null) }
+        dismissConfirmDialog()
     }
 
     fun requestCancelCompression() {
-        _uiState.update { it.copy(showCancelEncodingDialog = true) }
+        val activeItem = _uiState.value.encodedHistory.firstOrNull { it.isEncodingActive }
+            ?: _uiState.value.encodedHistory.firstOrNull { it.isQueued }
+        if (activeItem != null) {
+            requestConfirmAction(activeItem)
+        } else {
+            _uiState.update { it.copy(showCancelEncodingDialog = true) }
+        }
     }
 
     fun confirmCancelCompression() {
-        _uiState.update { it.copy(showCancelEncodingDialog = false) }
-        cancelCompression()
+        confirmPendingAction()
     }
 
     fun dismissCancelDialog() {
-        _uiState.update { it.copy(showCancelEncodingDialog = false) }
+        dismissConfirmDialog()
     }
 
     fun clearSelectedVideo() {
@@ -852,8 +1002,6 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
     fun startCompression() {
         val state = _uiState.value
         val media = state.selectedMedia ?: return
-        val context = getApplication<Application>().applicationContext
-
         val outputDir = getAppOutputDirectory()
 
         val paramLog = if (media.mediaType == MediaType.IMAGE) {
@@ -861,10 +1009,6 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
         } else {
             "Config Video/Audio: Codec=${state.outputFormat}, Res=${state.resolutionPreset.label}, Bitrate=${if (state.useAutoBitrate) "Auto" else "${state.targetBitrateMbps}Mbps"}, FPS=${if (state.frameRate == 0) "Original" else "${state.frameRate}fps"}, Audio=${if (state.isAudioMuted) "Muted" else state.audioFormat}"
         }
-        addLog("Memulai pengodean untuk berkas: ${media.fileName} (${media.mediaType.label})", LogLevel.INFO, "ENCODER")
-        addLog(paramLog, LogLevel.INFO, "ENCODER_CONFIG")
-        encodingStartTimeMs = System.currentTimeMillis()
-        val initialSizeText = String.format(Locale.US, "0.0 MB / %.1f MB", state.estimatedSizeMb)
 
         val extension = if (media.mediaType == MediaType.IMAGE) {
             state.imageFormat.lowercase()
@@ -878,176 +1022,304 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
 
         val outputFile = generateUniqueOutputFile(outputDir, media.fileName, extension)
 
+        val task = EncodingTask(
+            media = media,
+            outputFile = outputFile,
+            paramLog = paramLog,
+            estimatedSizeMb = state.estimatedSizeMb,
+            outputFormat = state.outputFormat,
+            targetBitrateMbps = state.targetBitrateMbps,
+            useAutoBitrate = state.useAutoBitrate,
+            bitrateModeOption = state.bitrateModeOption,
+            resolutionPreset = state.resolutionPreset,
+            scaleModeOption = state.scaleModeOption,
+            frameRate = state.frameRate,
+            iFrameIntervalSec = state.iFrameIntervalSec,
+            audioFormat = state.audioFormat,
+            audioBitrateKbps = state.audioBitrateKbps,
+            isAudioMuted = state.isAudioMuted,
+            rotationDegrees = state.rotationDegrees,
+            imageFormat = state.imageFormat,
+            imageQuality = state.imageQuality,
+            imageScalePercent = state.imageScalePercent
+        )
+
+        synchronized(encodingQueue) {
+            encodingQueue.add(task)
+        }
+
         val activeItem = EncodedFileItem(
+            id = outputFile.absolutePath,
             name = outputFile.name,
             path = outputFile.absolutePath,
             sizeBytes = 0L,
             lastModifiedMs = System.currentTimeMillis(),
             mediaType = media.mediaType,
-            isEncodingActive = true,
+            isEncodingActive = false,
+            isQueued = true,
+            queueStatus = QueueStatus.QUEUED,
             progressPercent = 0,
-            statusText = "$initialSizeText • Menyiapkan..."
+            statusText = "Dalam Antrean"
         )
 
-        // Switch to MAIN screen immediately (0ms lag!)
+        // Switch to MAIN screen immediately
         _uiState.update { current ->
             val updatedHistory = listOf(activeItem) + current.encodedHistory.filter { it.path != outputFile.absolutePath }
             current.copy(
                 currentScreen = AppScreen.MAIN,
-                isEncoding = true,
-                encodingProgress = 0,
-                activeEncodingFileName = media.fileName,
-                encodingStatusText = "$initialSizeText • Menyiapkan...",
                 encodedHistory = updatedHistory
             )
         }
 
-        if (media.mediaType == MediaType.IMAGE) {
-            viewModelScope.launch {
-                val engine = VideoEncodingEngine(context)
-                val targetW = if (state.imageScalePercent < 100 && media.width > 0) (media.width * state.imageScalePercent / 100) else 0
-                val targetH = if (state.imageScalePercent < 100 && media.height > 0) (media.height * state.imageScalePercent / 100) else 0
+        addLog("Berkas \"${media.fileName}\" (${media.mediaType.label}) ditambahkan ke antrean encoding.", LogLevel.INFO, "QUEUE")
 
-                val success = withContext(Dispatchers.IO) {
-                    engine.encodeImage(
-                        inputUri = media.uri,
-                        outputFile = outputFile,
-                        format = state.imageFormat,
-                        quality = state.imageQuality,
-                        targetWidth = targetW,
-                        targetHeight = targetH
+        // Trigger queue runner
+        processNextInQueue()
+    }
+
+    private fun processNextInQueue() {
+        viewModelScope.launch(Dispatchers.Main) {
+            if (activeTaskId != null || _uiState.value.isEncoding) {
+                return@launch
+            }
+
+            val nextTask = synchronized(encodingQueue) {
+                encodingQueue.firstOrNull { it.status == QueueStatus.QUEUED }
+            }
+
+            if (nextTask == null) {
+                _uiState.update { current ->
+                    current.copy(
+                        isEncoding = false,
+                        activeEncodingFileName = null,
+                        encodingStatusText = ""
                     )
                 }
-
-                if (success) {
-                    addLog("Pengodean gambar selesai: ${outputFile.name}", LogLevel.SUCCESS, "IMAGE")
-                    try {
-                        val resolver = context.contentResolver
-                        val contentValues = android.content.ContentValues().apply {
-                            put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, outputFile.name)
-                            put(android.provider.MediaStore.MediaColumns.SIZE, outputFile.length())
-                            put(android.provider.MediaStore.MediaColumns.DATE_ADDED, System.currentTimeMillis() / 1000)
-                            put(android.provider.MediaStore.MediaColumns.DATE_MODIFIED, System.currentTimeMillis() / 1000)
-                            val mime = when {
-                                outputFile.name.endsWith(".webp") -> "image/webp"
-                                outputFile.name.endsWith(".png") -> "image/png"
-                                else -> "image/jpeg"
-                            }
-                            put(android.provider.MediaStore.MediaColumns.MIME_TYPE, mime)
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                                put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, "${Environment.DIRECTORY_MOVIES}/Media Encoder")
-                                put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0)
-                            }
-                        }
-                        resolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
-
-                        android.media.MediaScannerConnection.scanFile(
-                            context,
-                            arrayOf(outputFile.absolutePath),
-                            null,
-                            null
-                        )
-                    } catch (_: Exception) {}
-
-                    _uiState.update {
-                        it.copy(
-                            isEncoding = false,
-                            encodingProgress = 100,
-                            encodingStatusText = "Selesai!",
-                            completedOutputPath = outputFile.absolutePath,
-                            activeEncodingFileName = null
-                        )
-                    }
-                    refreshEncodedHistory()
-                } else {
-                    addLog("Gagal memproses pengodean gambar.", LogLevel.ERROR, "IMAGE")
-                    _uiState.update {
-                        it.copy(
-                            isEncoding = false,
-                            encodingProgress = 0,
-                            errorMessage = "Gagal memproses pengodean gambar.",
-                            activeEncodingFileName = null
-                        )
-                    }
-                }
+                return@launch
             }
-            return
-        }
 
-        val targetWidth = if (state.resolutionPreset == ResolutionPreset.DEFAULT) 0 else state.resolutionPreset.width
-        val targetHeight = if (state.resolutionPreset == ResolutionPreset.DEFAULT) 0 else state.resolutionPreset.height
+            nextTask.status = QueueStatus.ENCODING
+            activeTaskId = nextTask.id
+            encodingStartTimeMs = System.currentTimeMillis()
 
-        val bitrateBps = if (state.useAutoBitrate) 0 else (state.targetBitrateMbps * 1_000_000).toInt()
-        val audioBitrateBps = state.audioBitrateKbps * 1000
+            val initialSizeText = String.format(Locale.US, "0.0 MB / %.1f MB", nextTask.estimatedSizeMb)
 
-        val serviceIntent = Intent(context, EncodingService::class.java).apply {
-            action = EncodingService.ACTION_START
-            putExtra(EncodingService.EXTRA_INPUT_URI, media.uri.toString())
-            putExtra(EncodingService.EXTRA_OUTPUT_PATH, outputFile.absolutePath)
-            putExtra(EncodingService.EXTRA_VIDEO_FORMAT, state.outputFormat)
-            putExtra(EncodingService.EXTRA_BITRATE, bitrateBps)
-            putExtra(EncodingService.EXTRA_BITRATE_MODE, state.bitrateModeOption.modeValue)
-            putExtra(EncodingService.EXTRA_WIDTH, targetWidth)
-            putExtra(EncodingService.EXTRA_HEIGHT, targetHeight)
-            putExtra(EncodingService.EXTRA_SCALE_MODE, state.scaleModeOption.modeValue)
-            putExtra(EncodingService.EXTRA_FPS, state.frameRate)
-            putExtra(EncodingService.EXTRA_IFRAME_SEC, state.iFrameIntervalSec)
-            putExtra(EncodingService.EXTRA_AUDIO_FORMAT, state.audioFormat)
-            putExtra(EncodingService.EXTRA_AUDIO_BITRATE, audioBitrateBps)
-            putExtra(EncodingService.EXTRA_AUDIO_MUTED, state.isAudioMuted)
-            putExtra(EncodingService.EXTRA_ROTATION, state.rotationDegrees)
-        }
+            _uiState.update { current ->
+                val updatedHistory = current.encodedHistory.map { item ->
+                    if (item.id == nextTask.id || item.path == nextTask.outputFile.absolutePath) {
+                        item.copy(
+                            isEncodingActive = true,
+                            isQueued = false,
+                            queueStatus = QueueStatus.ENCODING,
+                            progressPercent = 0,
+                            statusText = "$initialSizeText • Menyiapkan..."
+                        )
+                    } else item
+                }
+                current.copy(
+                    isEncoding = true,
+                    encodingProgress = 0,
+                    activeEncodingFileName = nextTask.media.fileName,
+                    encodingStatusText = "$initialSizeText • Menyiapkan...",
+                    estimatedSizeMb = nextTask.estimatedSizeMb,
+                    encodedHistory = updatedHistory
+                )
+            }
 
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            context.startForegroundService(serviceIntent)
-        } else {
-            context.startService(serviceIntent)
+            addLog("Memproses antrean: ${nextTask.media.fileName} (${nextTask.media.mediaType.label})", LogLevel.INFO, "ENCODER")
+            addLog(nextTask.paramLog, LogLevel.INFO, "ENCODER_CONFIG")
+
+            val context = getApplication<Application>().applicationContext
+
+            if (nextTask.media.mediaType == MediaType.IMAGE) {
+                activeImageJob = viewModelScope.launch {
+                    val engine = VideoEncodingEngine(context)
+                    val targetW = if (nextTask.imageScalePercent < 100 && nextTask.media.width > 0) (nextTask.media.width * nextTask.imageScalePercent / 100) else 0
+                    val targetH = if (nextTask.imageScalePercent < 100 && nextTask.media.height > 0) (nextTask.media.height * nextTask.imageScalePercent / 100) else 0
+
+                    val success = withContext(Dispatchers.IO) {
+                        engine.encodeImage(
+                            inputUri = nextTask.media.uri,
+                            outputFile = nextTask.outputFile,
+                            format = nextTask.imageFormat,
+                            quality = nextTask.imageQuality,
+                            targetWidth = targetW,
+                            targetHeight = targetH
+                        )
+                    }
+
+                    if (success) {
+                        addLog("Pengodean gambar selesai: ${nextTask.outputFile.name}", LogLevel.SUCCESS, "IMAGE")
+                        try {
+                            val resolver = context.contentResolver
+                            val contentValues = android.content.ContentValues().apply {
+                                put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, nextTask.outputFile.name)
+                                put(android.provider.MediaStore.MediaColumns.SIZE, nextTask.outputFile.length())
+                                put(android.provider.MediaStore.MediaColumns.DATE_ADDED, System.currentTimeMillis() / 1000)
+                                put(android.provider.MediaStore.MediaColumns.DATE_MODIFIED, System.currentTimeMillis() / 1000)
+                                val mime = when {
+                                    nextTask.outputFile.name.endsWith(".webp") -> "image/webp"
+                                    nextTask.outputFile.name.endsWith(".png") -> "image/png"
+                                    else -> "image/jpeg"
+                                }
+                                put(android.provider.MediaStore.MediaColumns.MIME_TYPE, mime)
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                    put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, "${Environment.DIRECTORY_MOVIES}/Media Encoder")
+                                    put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0)
+                                }
+                            }
+                            resolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+
+                            android.media.MediaScannerConnection.scanFile(
+                                context,
+                                arrayOf(nextTask.outputFile.absolutePath),
+                                null,
+                                null
+                            )
+                        } catch (_: Exception) {}
+
+                        nextTask.status = QueueStatus.COMPLETED
+
+                        _uiState.update { current ->
+                            val updatedHistory = current.encodedHistory.map { item ->
+                                if (item.id == nextTask.id || item.path == nextTask.outputFile.absolutePath) {
+                                    item.copy(
+                                        name = nextTask.outputFile.name,
+                                        path = nextTask.outputFile.absolutePath,
+                                        sizeBytes = if (nextTask.outputFile.exists()) nextTask.outputFile.length() else item.sizeBytes,
+                                        lastModifiedMs = if (nextTask.outputFile.exists()) nextTask.outputFile.lastModified() else System.currentTimeMillis(),
+                                        isEncodingActive = false,
+                                        isQueued = false,
+                                        queueStatus = QueueStatus.COMPLETED,
+                                        progressPercent = 100,
+                                        statusText = "Selesai"
+                                    )
+                                } else item
+                            }
+                            current.copy(
+                                isEncoding = false,
+                                encodingProgress = 100,
+                                encodingStatusText = "Selesai!",
+                                completedOutputPath = nextTask.outputFile.absolutePath,
+                                activeEncodingFileName = null,
+                                encodedHistory = updatedHistory
+                            )
+                        }
+                        refreshEncodedHistory()
+                    } else {
+                        addLog("Gagal memproses pengodean gambar: ${nextTask.outputFile.name}", LogLevel.ERROR, "IMAGE")
+                        nextTask.status = QueueStatus.FAILED
+                        _uiState.update { current ->
+                            val updatedHistory = current.encodedHistory.map { item ->
+                                if (item.id == nextTask.id || item.path == nextTask.outputFile.absolutePath) {
+                                    item.copy(
+                                        isEncodingActive = false,
+                                        isQueued = false,
+                                        queueStatus = QueueStatus.FAILED,
+                                        progressPercent = 0,
+                                        statusText = "Gagal"
+                                    )
+                                } else item
+                            }
+                            current.copy(
+                                isEncoding = false,
+                                encodingProgress = 0,
+                                errorMessage = "Gagal memproses pengodean gambar.",
+                                activeEncodingFileName = null,
+                                encodedHistory = updatedHistory
+                            )
+                        }
+                    }
+                    activeImageJob = null
+                    activeTaskId = null
+                    processNextInQueue()
+                }
+                return@launch
+            }
+
+            // Video/Audio processing via EncodingService
+            val targetWidth = if (nextTask.resolutionPreset == ResolutionPreset.DEFAULT) 0 else nextTask.resolutionPreset.width
+            val targetHeight = if (nextTask.resolutionPreset == ResolutionPreset.DEFAULT) 0 else nextTask.resolutionPreset.height
+
+            val bitrateBps = if (nextTask.useAutoBitrate) 0 else (nextTask.targetBitrateMbps * 1_000_000).toInt()
+            val audioBitrateBps = nextTask.audioBitrateKbps * 1000
+
+            val serviceIntent = Intent(context, EncodingService::class.java).apply {
+                action = EncodingService.ACTION_START
+                putExtra(EncodingService.EXTRA_INPUT_URI, nextTask.media.uri.toString())
+                putExtra(EncodingService.EXTRA_OUTPUT_PATH, nextTask.outputFile.absolutePath)
+                putExtra(EncodingService.EXTRA_VIDEO_FORMAT, nextTask.outputFormat)
+                putExtra(EncodingService.EXTRA_BITRATE, bitrateBps)
+                putExtra(EncodingService.EXTRA_BITRATE_MODE, nextTask.bitrateModeOption.modeValue)
+                putExtra(EncodingService.EXTRA_WIDTH, targetWidth)
+                putExtra(EncodingService.EXTRA_HEIGHT, targetHeight)
+                putExtra(EncodingService.EXTRA_SCALE_MODE, nextTask.scaleModeOption.modeValue)
+                putExtra(EncodingService.EXTRA_FPS, nextTask.frameRate)
+                putExtra(EncodingService.EXTRA_IFRAME_SEC, nextTask.iFrameIntervalSec)
+                putExtra(EncodingService.EXTRA_AUDIO_FORMAT, nextTask.audioFormat)
+                putExtra(EncodingService.EXTRA_AUDIO_BITRATE, audioBitrateBps)
+                putExtra(EncodingService.EXTRA_AUDIO_MUTED, nextTask.isAudioMuted)
+                putExtra(EncodingService.EXTRA_ROTATION, nextTask.rotationDegrees)
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(serviceIntent)
+            } else {
+                context.startService(serviceIntent)
+            }
         }
     }
 
     fun cancelCompression() {
+        val activeItem = _uiState.value.encodedHistory.firstOrNull { it.isEncodingActive }
+            ?: _uiState.value.encodedHistory.firstOrNull { it.isQueued }
+        if (activeItem != null) {
+            cancelActiveEncoding(activeItem)
+        }
+    }
+
+    private fun cancelActiveEncoding(item: EncodedFileItem) {
         val context = getApplication<Application>().applicationContext
-        val state = _uiState.value
+        _uiState.update { it.copy(pendingRemovalPaths = it.pendingRemovalPaths + item.path) }
 
-        // Find and mark active encoding item for deferred removal
-        val activeItem = state.encodedHistory.firstOrNull { it.isEncodingActive }
-        if (activeItem != null) {
-            _uiState.update { it.copy(pendingRemovalPaths = it.pendingRemovalPaths + activeItem.path) }
+        val activeTask = synchronized(encodingQueue) { encodingQueue.firstOrNull { it.id == item.id || it.id == activeTaskId || it.outputFile.absolutePath == item.path } }
+        if (activeTask != null) {
+            activeTask.status = QueueStatus.CANCELLED
         }
 
-        val serviceIntent = Intent(context, EncodingService::class.java).apply {
-            action = EncodingService.ACTION_CANCEL
-        }
-        context.startService(serviceIntent)
-        addLog("Mengirim perintah pembatalan encoding ke service.", LogLevel.WARNING, "USER")
-
-        _uiState.update {
-            it.copy(
-                isEncoding = false,
-                encodingProgress = 0,
-                activeEncodingFileName = null
-            )
-        }
-
-        // Deferred removal after animation completes
-        if (activeItem != null) {
-            viewModelScope.launch {
-                delay(350)
-                // Delete partial file
-                try {
-                    val partialFile = File(activeItem.path)
-                    if (partialFile.exists()) {
-                        partialFile.delete()
-                        addLog("File sisa dihapus: ${partialFile.name}", LogLevel.INFO, "STORAGE")
-                    }
-                } catch (_: Exception) {}
-                val updatedHistory = _uiState.value.encodedHistory.filter { !it.isEncodingActive }
-                _uiState.update {
-                    it.copy(
-                        encodedHistory = updatedHistory,
-                        pendingRemovalPaths = it.pendingRemovalPaths - activeItem.path
-                    )
-                }
+        val isJobActive = activeImageJob != null && activeImageJob!!.isActive
+        if (isJobActive) {
+            activeImageJob?.cancel()
+            activeImageJob = null
+            addLog("Proses Pengodean gambar dibatalkan oleh pengguna.", LogLevel.WARNING, "USER")
+            try {
+                val partialFile = File(item.path)
+                if (partialFile.exists()) partialFile.delete()
+            } catch (_: Exception) {}
+            _uiState.update { current ->
+                current.copy(
+                    isEncoding = false,
+                    encodingProgress = 0,
+                    encodingStatusText = "Dibatalkan",
+                    activeEncodingFileName = null,
+                    encodedHistory = current.encodedHistory.filter { it.path != item.path }
+                )
+            }
+            activeTaskId = null
+            processNextInQueue()
+        } else {
+            val serviceIntent = Intent(context, EncodingService::class.java).apply {
+                action = EncodingService.ACTION_CANCEL
+            }
+            context.startService(serviceIntent)
+            addLog("Mengirim perintah pembatalan encoding ke service.", LogLevel.WARNING, "USER")
+            _uiState.update { current ->
+                current.copy(
+                    isEncoding = false,
+                    encodingProgress = 0,
+                    activeEncodingFileName = null,
+                    encodedHistory = current.encodedHistory.filter { it.path != item.path }
+                )
             }
         }
     }

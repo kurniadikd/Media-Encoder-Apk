@@ -58,6 +58,8 @@ class EncodingService : Service() {
     private val _progressState = MutableStateFlow(ServiceProgressState())
     val progressState: StateFlow<ServiceProgressState> = _progressState.asStateFlow()
 
+    private var stopSelfJob: Job? = null
+
     override fun onBind(intent: Intent?): IBinder = binder
 
     override fun onCreate() {
@@ -109,6 +111,8 @@ class EncodingService : Service() {
     }
 
     fun startEncoding(inputUri: Uri, outputPath: String, config: EncodingConfig) {
+        stopSelfJob?.cancel()
+        stopSelfJob = null
         val notification = createNotification(0, "Memulai Pengodean Hardware...", isFinished = false)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(
@@ -290,7 +294,8 @@ class EncodingService : Service() {
     }
 
     private fun stopSelfWithDelay() {
-        scope.launch {
+        stopSelfJob?.cancel()
+        stopSelfJob = scope.launch {
             delay(2500)
             clearNotificationAndStop()
         }

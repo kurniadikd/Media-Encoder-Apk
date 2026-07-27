@@ -74,12 +74,14 @@ import androidx.compose.material.icons.filled.FolderZip
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ButtonColors
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -107,6 +109,8 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SelectableChipColors
 import androidx.compose.material3.Slider
+import androidx.compose.runtime.key
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -1014,58 +1018,60 @@ fun MainScreenView(
             }
         }
 
-        // Delete Confirmation Dialog
-        uiState.pendingDeleteItem?.let { item ->
-            AlertDialog(
-                onDismissRequest = { viewModel.dismissDeleteDialog() },
-                title = {
-                    Text(
-                        text = "Hapus File?",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-                    )
-                },
-                text = {
-                    Text(
-                        text = "Yakin ingin menghapus file \"${item.name}\"? Tindakan ini tidak dapat dibatalkan.",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                },
-                confirmButton = {
-                    Button(onClick = { viewModel.confirmDeleteHistoryItem() }) {
-                        Text("Hapus")
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { viewModel.dismissDeleteDialog() }) {
-                        Text("Batal")
-                    }
-                }
-            )
+        // Generic Confirmation Dialog (For Delete File, Remove from Queue, or Stop Active Encoding)
+        val activeConfirmAction = uiState.pendingConfirmAction ?: run {
+            uiState.pendingDeleteItem?.let { item ->
+                PendingConfirmAction(PendingActionType.DELETE_FILE, item)
+            } ?: if (uiState.showCancelEncodingDialog) {
+                val activeItem = uiState.encodedHistory.firstOrNull { it.isEncodingActive }
+                    ?: uiState.encodedHistory.firstOrNull { it.isQueued }
+                activeItem?.let { PendingConfirmAction(if (it.isEncodingActive) PendingActionType.STOP_ENCODING else PendingActionType.REMOVE_FROM_QUEUE, it) }
+            } else null
         }
 
-        // Cancel Encoding Confirmation Dialog
-        if (uiState.showCancelEncodingDialog) {
+        activeConfirmAction?.let { action ->
+            val title = when (action.type) {
+                PendingActionType.DELETE_FILE -> "Hapus File?"
+                PendingActionType.REMOVE_FROM_QUEUE -> "Hapus dari Antrean?"
+                PendingActionType.STOP_ENCODING -> "Hentikan Encoding?"
+            }
+            val message = when (action.type) {
+                PendingActionType.DELETE_FILE -> "Yakin ingin menghapus berkas \"${action.item.name}\"? Berkas di penyimpanan HP juga akan dihapus."
+                PendingActionType.REMOVE_FROM_QUEUE -> "Yakin ingin menghapus berkas \"${action.item.name}\" dari antrean encoding?"
+                PendingActionType.STOP_ENCODING -> "Yakin ingin menghentikan proses encoding untuk berkas \"${action.item.name}\"? Berkas output yang belum selesai akan dibersihkan."
+            }
+            val confirmText = when (action.type) {
+                PendingActionType.DELETE_FILE -> "Hapus File"
+                PendingActionType.REMOVE_FROM_QUEUE -> "Hapus Antrean"
+                PendingActionType.STOP_ENCODING -> "Ya, Hentikan"
+            }
+
             AlertDialog(
-                onDismissRequest = { viewModel.dismissCancelDialog() },
+                onDismissRequest = { viewModel.dismissConfirmDialog() },
                 title = {
                     Text(
-                        text = "Hentikan Encoding?",
+                        text = title,
                         style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
                     )
                 },
                 text = {
                     Text(
-                        text = "Yakin ingin menghentikan proses encoding yang sedang berjalan? File output mungkin tidak sempurna.",
+                        text = message,
                         style = MaterialTheme.typography.bodyMedium
                     )
                 },
                 confirmButton = {
-                    Button(onClick = { viewModel.confirmCancelCompression() }) {
-                        Text("Ya, Hentikan")
+                    Button(
+                        onClick = { viewModel.confirmPendingAction() },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.error
+                        )
+                    ) {
+                        Text(confirmText)
                     }
                 },
                 dismissButton = {
-                    TextButton(onClick = { viewModel.dismissCancelDialog() }) {
+                    TextButton(onClick = { viewModel.dismissConfirmDialog() }) {
                         Text("Batal")
                     }
                 }
@@ -1640,6 +1646,55 @@ fun M3DropdownSelector(
     }
 }
 
+/**
+ * Integrated Expressive Motion & Animation Design Tokens System
+ * Provides standardized, spring-based native animations for list entry, exit, bounds morphing, and card state transitions.
+ */
+object ExpressiveMotion {
+    // Standard spring specs for container bounds morphing
+    val boundsSpring = spring<IntSize>(
+        stiffness = Spring.StiffnessMediumLow,
+        dampingRatio = Spring.DampingRatioNoBouncy
+    )
+
+    // Standard state transition specs for morphing between Queued -> Encoding -> Finished states
+    val stateTransitionSpec = (fadeIn(tween(260, easing = FastOutSlowInEasing)) + scaleIn(initialScale = 0.85f, animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioMediumBouncy)))
+        .togetherWith(fadeOut(tween(180, easing = FastOutSlowInEasing)) + scaleOut(targetScale = 0.85f, animationSpec = spring(stiffness = Spring.StiffnessMedium, dampingRatio = Spring.DampingRatioNoBouncy)))
+
+    // Badge Icon Inward Enter / Outward Exit Transition Spec
+    val badgeTransitionSpec = (
+        fadeIn(tween(260, easing = FastOutSlowInEasing)) + scaleIn(
+            initialScale = 0.5f,
+            animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioMediumBouncy)
+        )
+    ).togetherWith(
+        fadeOut(tween(200, easing = FastOutSlowInEasing)) + scaleOut(
+            targetScale = 1.4f,
+            animationSpec = spring(stiffness = Spring.StiffnessMedium, dampingRatio = Spring.DampingRatioNoBouncy)
+        )
+    )
+
+    // List Item Addition Enter Transition (Expand + FadeIn + ScaleIn)
+    val itemEnterTransition = expandVertically(
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioMediumBouncy)
+    ) + fadeIn(
+        animationSpec = spring(stiffness = Spring.StiffnessMedium, dampingRatio = Spring.DampingRatioNoBouncy)
+    ) + scaleIn(
+        initialScale = 0.88f,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioMediumBouncy)
+    )
+
+    // List Item Removal Exit Transition (Shrink + FadeOut + ScaleOut)
+    val itemExitTransition = shrinkVertically(
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioNoBouncy)
+    ) + fadeOut(
+        animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing)
+    ) + scaleOut(
+        targetScale = 0.88f,
+        animationSpec = spring(stiffness = Spring.StiffnessMedium, dampingRatio = Spring.DampingRatioNoBouncy)
+    )
+}
+
 @Composable
 fun UnifiedMediaListSection(
     uiState: CompressorUiState,
@@ -1687,45 +1742,24 @@ fun UnifiedMediaListSection(
                 }
             }
 
-            // Render Unified Media Items with native M3 Expressive spring animations
+            // Render Unified Media Items with integrated Expressive Motion tokens system
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 uiState.encodedHistory.forEach { item ->
-                    val isRemoving = item.path in uiState.pendingRemovalPaths
-                    AnimatedVisibility(
-                        visible = !isRemoving,
-                        enter = expandVertically(
-                            spring(
-                                stiffness = Spring.StiffnessMediumLow,
-                                dampingRatio = Spring.DampingRatioMediumBouncy
+                    key(item.id) {
+                        val isRemoving = item.path in uiState.pendingRemovalPaths
+                        AnimatedVisibility(
+                            visible = !isRemoving,
+                            enter = ExpressiveMotion.itemEnterTransition,
+                            exit = ExpressiveMotion.itemExitTransition
+                        ) {
+                            UnifiedMediaCardItem(
+                                item = item,
+                                onCancel = onCancelEncoding,
+                                onPlay = { onPlay(item) },
+                                onShare = { onShare(item) },
+                                onDelete = { onDelete(item) }
                             )
-                        ) + fadeIn(
-                            spring(
-                                stiffness = Spring.StiffnessMedium,
-                                dampingRatio = Spring.DampingRatioNoBouncy
-                            )
-                        ),
-                        exit = shrinkVertically(
-                            spring(
-                                stiffness = Spring.StiffnessMediumLow,
-                                dampingRatio = Spring.DampingRatioNoBouncy
-                            )
-                        ) + fadeOut(
-                            tween(200)
-                        ) + scaleOut(
-                            targetScale = 0.92f,
-                            animationSpec = spring(
-                                stiffness = Spring.StiffnessMedium,
-                                dampingRatio = Spring.DampingRatioNoBouncy
-                            )
-                        )
-                    ) {
-                        UnifiedMediaCardItem(
-                            item = item,
-                            onCancel = onCancelEncoding,
-                            onPlay = { onPlay(item) },
-                            onShare = { onShare(item) },
-                            onDelete = { onDelete(item) }
-                        )
+                        }
                     }
                 }
             }
@@ -1736,7 +1770,7 @@ fun UnifiedMediaListSection(
 /**
  * Unified Media Card Item
  * - Uses 1 SINGLE M3ExpressiveCard container for both Active Progress & Finished File
- * - Smoothly morphs badge, subtext details, and action buttons using native Compose AnimatedContent!
+ * - Smoothly morphs badge, subtext details, and action buttons using native Compose AnimatedContent & ExpressiveMotion system!
  */
 @Composable
 fun UnifiedMediaCardItem(
@@ -1750,10 +1784,7 @@ fun UnifiedMediaCardItem(
         modifier = Modifier
             .fillMaxWidth()
             .animateContentSize(
-                animationSpec = spring(
-                    stiffness = Spring.StiffnessMediumLow,
-                    dampingRatio = Spring.DampingRatioNoBouncy
-                )
+                animationSpec = ExpressiveMotion.boundsSpring
             ),
         shape = RoundedCornerShape(20.dp)
     ) {
@@ -1764,35 +1795,91 @@ fun UnifiedMediaCardItem(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
+            val cardStateKey = when {
+                item.isEncodingActive -> "ENCODING"
+                item.isQueued || item.queueStatus == QueueStatus.QUEUED -> "QUEUED"
+                else -> "FINISHED"
+            }
+
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.weight(1f)
             ) {
-                // 1. Left Badge Icon (Native AnimatedContent morph between Wavy Progress & Solid Circle Badge)
+                // 1. Left Badge Icon
+
                 AnimatedContent(
-                    targetState = item.isEncodingActive,
-                    transitionSpec = {
-                        (fadeIn(tween(250)) + scaleIn(initialScale = 0.8f)).togetherWith(
-                            fadeOut(tween(200)) + scaleOut(targetScale = 0.8f)
-                        )
-                    },
+                    targetState = cardStateKey,
+                    transitionSpec = { ExpressiveMotion.badgeTransitionSpec },
                     label = "badge_animation"
-                ) { isActive ->
-                    if (isActive) {
-                        Box(
-                            contentAlignment = Alignment.Center,
-                            modifier = Modifier.size(52.dp)
-                        ) {
-                            M3ExpressiveCircularWavyProgressIndicator(
-                                progress = item.progressPercent / 100f,
-                                modifier = Modifier.fillMaxSize(),
-                                color = MaterialTheme.colorScheme.primary,
-                                trackColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
-                            )
+                ) { state ->
+                    when (state) {
+                        "ENCODING" -> {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.size(52.dp)
+                            ) {
+                                M3ExpressiveCircularWavyProgressIndicator(
+                                    progress = item.progressPercent / 100f,
+                                    modifier = Modifier.fillMaxSize(),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    trackColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.35f)
+                                )
+                                Surface(
+                                    shape = CircleShape,
+                                    color = Color.Transparent,
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = when (item.mediaType) {
+                                                MediaType.IMAGE -> Icons.Default.Image
+                                                MediaType.AUDIO -> Icons.Default.Audiotrack
+                                                else -> Icons.Default.Movie
+                                            },
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        "QUEUED" -> {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.size(52.dp)
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.fillMaxSize(),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    trackColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.35f),
+                                    strokeWidth = 3.dp
+                                )
+                                Surface(
+                                    shape = CircleShape,
+                                    color = Color.Transparent,
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = when (item.mediaType) {
+                                                MediaType.IMAGE -> Icons.Default.Image
+                                                MediaType.AUDIO -> Icons.Default.Audiotrack
+                                                else -> Icons.Default.Movie
+                                            },
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        else -> {
                             Surface(
                                 shape = CircleShape,
-                                color = Color.Transparent,
-                                modifier = Modifier.size(36.dp)
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(52.dp)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(
@@ -1802,29 +1889,10 @@ fun UnifiedMediaCardItem(
                                             else -> Icons.Default.Movie
                                         },
                                         contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(22.dp)
+                                        tint = MaterialTheme.colorScheme.onPrimary,
+                                        modifier = Modifier.size(26.dp)
                                     )
                                 }
-                            }
-                        }
-                    } else {
-                        Surface(
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(52.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = when (item.mediaType) {
-                                        MediaType.IMAGE -> Icons.Default.Image
-                                        MediaType.AUDIO -> Icons.Default.Audiotrack
-                                        else -> Icons.Default.Movie
-                                    },
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onPrimary,
-                                    modifier = Modifier.size(26.dp)
-                                )
                             }
                         }
                     }
@@ -1832,7 +1900,7 @@ fun UnifiedMediaCardItem(
 
                 Spacer(modifier = Modifier.width(12.dp))
 
-                // 2. Middle Text Details (Native AnimatedContent morph between Progress % / Status & Final Size / Date)
+                // 2. Middle Text Details
                 Column {
                     Text(
                         text = item.name,
@@ -1842,56 +1910,93 @@ fun UnifiedMediaCardItem(
                     )
 
                     AnimatedContent(
-                        targetState = item.isEncodingActive,
-                        transitionSpec = {
-                            fadeIn(tween(200)).togetherWith(fadeOut(tween(150)))
-                        },
+                        targetState = cardStateKey,
+                        transitionSpec = { ExpressiveMotion.stateTransitionSpec },
                         label = "subtext_animation"
-                    ) { isActive ->
-                        if (isActive) {
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "${item.progressPercent.coerceIn(0, 100)}%",
-                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold),
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                Text("•", style = MaterialTheme.typography.labelSmall)
-                                Text(
-                                    text = item.statusText,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
+                    ) { state ->
+                        when (state) {
+                            "ENCODING" -> {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "${item.progressPercent.coerceIn(0, 100)}%",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold),
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    Text("•", style = MaterialTheme.typography.labelSmall)
+                                    Text(
+                                        text = item.statusText,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
                             }
-                        } else {
-                            val formattedSize = remember(item.sizeBytes) {
-                                String.format(Locale.US, "%.1f MB", item.sizeBytes / 1_000_000f)
+                            "QUEUED" -> {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Dalam Antrean",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold),
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    Text("•", style = MaterialTheme.typography.labelSmall)
+                                    Text(
+                                        text = "Menunggu giliran...",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
                             }
-                            val formattedDate = remember(item.lastModifiedMs) {
-                                if (item.lastModifiedMs > 0) {
-                                    SimpleDateFormat("d MMM, HH:mm", Locale.getDefault()).format(Date(item.lastModifiedMs))
-                                } else "Baru saja"
-                            }
+                            else -> {
+                                val formattedSize = remember(item.sizeBytes) {
+                                    if (item.sizeBytes > 0) String.format(Locale.US, "%.1f MB", item.sizeBytes / 1_000_000f) else ""
+                                }
+                                val formattedDate = remember(item.lastModifiedMs) {
+                                    if (item.lastModifiedMs > 0) {
+                                        SimpleDateFormat("d MMM, HH:mm", Locale.getDefault()).format(Date(item.lastModifiedMs))
+                                    } else "Baru saja"
+                                }
 
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = formattedSize,
-                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                Text("•", style = MaterialTheme.typography.labelSmall)
-                                Text(
-                                    text = formattedDate,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                                )
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    if (item.queueStatus == QueueStatus.FAILED) {
+                                        Text(
+                                            text = "Gagal",
+                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                            color = MaterialTheme.colorScheme.error
+                                        )
+                                    } else if (item.queueStatus == QueueStatus.CANCELLED) {
+                                        Text(
+                                            text = "Dibatalkan",
+                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                            color = MaterialTheme.colorScheme.outline
+                                        )
+                                    } else {
+                                        if (formattedSize.isNotEmpty()) {
+                                            Text(
+                                                text = formattedSize,
+                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                            Text("•", style = MaterialTheme.typography.labelSmall)
+                                        }
+                                        Text(
+                                            text = formattedDate,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -1900,39 +2005,51 @@ fun UnifiedMediaCardItem(
 
             Spacer(modifier = Modifier.width(8.dp))
 
-            // 3. Right Action Buttons (Native AnimatedContent morph between Stop Button & Play/Share/Delete Buttons)
+            // 3. Right Action Buttons
             AnimatedContent(
-                targetState = item.isEncodingActive,
-                transitionSpec = {
-                    (fadeIn(tween(250)) + scaleIn(initialScale = 0.8f)).togetherWith(
-                        fadeOut(tween(150)) + scaleOut(targetScale = 0.8f)
-                    )
-                },
+                targetState = cardStateKey,
+                transitionSpec = { ExpressiveMotion.stateTransitionSpec },
                 label = "actions_animation"
-            ) { isActive ->
-                if (isActive) {
-                    M3ExpressiveFilledTonalIconButton(
-                        onClick = onCancel,
-                        colors = IconButtonDefaults.filledTonalIconButtonColors(
-                            containerColor = MaterialTheme.colorScheme.errorContainer,
-                            contentColor = MaterialTheme.colorScheme.onErrorContainer
-                        )
-                    ) {
-                        Icon(Icons.Default.Stop, contentDescription = "Batal")
+            ) { state ->
+                when (state) {
+                    "ENCODING" -> {
+                        M3ExpressiveFilledTonalIconButton(
+                            onClick = onDelete,
+                            colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                containerColor = MaterialTheme.colorScheme.errorContainer,
+                                contentColor = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        ) {
+                            Icon(Icons.Default.Stop, contentDescription = "Hentikan Encoding")
+                        }
                     }
-                } else {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        M3ExpressiveIconButton(onClick = onPlay) {
-                            Icon(Icons.Default.PlayArrow, contentDescription = "Putar Media")
+                    "QUEUED" -> {
+                        M3ExpressiveFilledTonalIconButton(
+                            onClick = onDelete,
+                            colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                        ) {
+                            Icon(Icons.Default.Close, contentDescription = "Hapus Antrean")
                         }
-                        M3ExpressiveIconButton(onClick = onShare) {
-                            Icon(Icons.Default.Share, contentDescription = "Bagikan Media")
-                        }
-                        M3ExpressiveIconButton(onClick = onDelete) {
-                            Icon(Icons.Default.Delete, contentDescription = "Hapus Media")
+                    }
+                    else -> {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (item.queueStatus == QueueStatus.COMPLETED) {
+                                M3ExpressiveIconButton(onClick = onPlay) {
+                                    Icon(Icons.Default.PlayArrow, contentDescription = "Putar Media")
+                                }
+                                M3ExpressiveIconButton(onClick = onShare) {
+                                    Icon(Icons.Default.Share, contentDescription = "Bagikan Media")
+                                }
+                            }
+                            M3ExpressiveIconButton(onClick = onDelete) {
+                                Icon(Icons.Default.Delete, contentDescription = "Hapus Media")
+                            }
                         }
                     }
                 }
@@ -1951,7 +2068,7 @@ fun M3ExpressiveCircularWavyProgressIndicator(
     progress: Float,
     modifier: Modifier = Modifier,
     color: Color = MaterialTheme.colorScheme.primary,
-    trackColor: Color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+    trackColor: Color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.35f)
 ) {
     val animatedProgress by animateFloatAsState(
         targetValue = progress.coerceIn(0.0f, 1.0f),
@@ -1979,7 +2096,7 @@ fun M3ExpressiveCircularWavyProgressIndicator(
 
     Canvas(modifier = modifier) {
         val diameter = minOf(size.width, size.height)
-        val strokeWidth = 3.5.dp.toPx()
+        val strokeWidth = 3.dp.toPx()
         val radius = (diameter - strokeWidth * 2) / 2f
         val center = Offset(size.width / 2f, size.height / 2f)
 
