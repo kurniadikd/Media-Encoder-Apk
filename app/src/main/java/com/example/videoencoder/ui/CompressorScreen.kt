@@ -1010,8 +1010,8 @@ fun MainScreenView(
                     },
                     onClick = { isFabMenuExpanded = !isFabMenuExpanded },
                     expanded = isFabMenuExpanded || isScrollAtTop,
-                    containerColor = if (isFabMenuExpanded) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary,
-                    contentColor = if (isFabMenuExpanded) MaterialTheme.colorScheme.onTertiary else MaterialTheme.colorScheme.onPrimary,
+                    containerColor = if (isFabMenuExpanded) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary,
+                    contentColor = if (isFabMenuExpanded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onPrimary,
                     shape = RoundedCornerShape(20.dp),
                     elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp)
                 )
