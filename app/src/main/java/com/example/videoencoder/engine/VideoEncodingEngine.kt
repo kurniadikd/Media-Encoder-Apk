@@ -144,7 +144,8 @@ class VideoEncodingEngine(private val context: Context) {
                 bitmap
             }
 
-            val compressFormat = when (format.uppercase()) {
+            val targetExt = outputFile.extension.uppercase().ifBlank { format.uppercase() }
+            val compressFormat = when (targetExt) {
                 "PNG" -> Bitmap.CompressFormat.PNG
                 "WEBP" -> if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
                     Bitmap.CompressFormat.WEBP_LOSSY
