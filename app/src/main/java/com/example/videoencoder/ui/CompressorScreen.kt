@@ -1723,7 +1723,7 @@ fun UnifiedMediaCardItem(
                     } else {
                         Surface(
                             shape = CircleShape,
-                            color = MaterialTheme.colorScheme.primaryContainer,
+                            color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(52.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
@@ -1734,7 +1734,7 @@ fun UnifiedMediaCardItem(
                                         else -> Icons.Default.Movie
                                     },
                                     contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    tint = MaterialTheme.colorScheme.onPrimary,
                                     modifier = Modifier.size(26.dp)
                                 )
                             }
