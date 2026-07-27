@@ -1750,24 +1750,17 @@ fun UnifiedMediaListSection(
                 }
             }
 
-            // Render Unified Media Items with integrated Expressive Motion tokens system
+            // Render Unified Media Items smoothly
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 uiState.encodedHistory.forEach { item ->
                     key(item.id) {
-                        val isRemoving = item.path in uiState.pendingRemovalPaths
-                        AnimatedVisibility(
-                            visible = !isRemoving,
-                            enter = ExpressiveMotion.itemEnterTransition,
-                            exit = ExpressiveMotion.itemExitTransition
-                        ) {
-                            UnifiedMediaCardItem(
-                                item = item,
-                                onCancel = onCancelEncoding,
-                                onPlay = { onPlay(item) },
-                                onShare = { onShare(item) },
-                                onDelete = { onDelete(item) }
-                            )
-                        }
+                        UnifiedMediaCardItem(
+                            item = item,
+                            onCancel = onCancelEncoding,
+                            onPlay = { onPlay(item) },
+                            onShare = { onShare(item) },
+                            onDelete = { onDelete(item) }
+                        )
                     }
                 }
             }
