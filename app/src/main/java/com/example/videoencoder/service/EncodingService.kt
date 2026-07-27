@@ -273,6 +273,18 @@ class EncodingService : Service() {
     fun cancelEncoding() {
         activeTransformer?.cancel()
         progressJob?.cancel()
+
+        // Delete the partially-written output file
+        val outputPath = _progressState.value.outputPath
+        if (outputPath != null) {
+            try {
+                val partialFile = File(outputPath)
+                if (partialFile.exists()) {
+                    partialFile.delete()
+                }
+            } catch (_: Exception) {}
+        }
+
         _progressState.value = ServiceProgressState(status = EncodingStatus.CANCELLED)
         clearNotificationAndStop()
     }

@@ -8,6 +8,7 @@ import android.content.ServiceConnection
 import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import android.media.MediaScannerConnection
 import android.os.Build
 import android.os.Environment
 import android.os.IBinder
@@ -20,6 +21,7 @@ import androidx.media3.effect.Presentation
 import com.example.videoencoder.engine.EncodingConfig
 import com.example.videoencoder.engine.VideoEncodingEngine
 import com.example.videoencoder.service.EncodingService
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -146,7 +148,12 @@ data class CompressorUiState(
     val completedOutputPath: String? = null,
     val errorMessage: String? = null,
     val encodedHistory: List<EncodedFileItem> = emptyList(),
-    val logList: List<LogEntry> = emptyList()
+    val logList: List<LogEntry> = emptyList(),
+
+    // Confirmation Dialog State
+    val pendingDeleteItem: EncodedFileItem? = null,
+    val showCancelEncodingDialog: Boolean = false,
+    val pendingRemovalPaths: Set<String> = emptySet()
 )
 
 class CompressorViewModel(application: Application) : AndroidViewModel(application) {
@@ -469,13 +476,82 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
 
     fun deleteHistoryItem(path: String) {
         viewModelScope.launch {
+            val context = getApplication<Application>().applicationContext
             val file = File(path)
+
+            // Step 1: Delete MediaStore entries from all content providers
+            val contentUris = listOf(
+                MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+            )
+            for (contentUri in contentUris) {
+                try {
+                    val projection = arrayOf(MediaStore.MediaColumns._ID)
+                    val selection = "${MediaStore.MediaColumns.DATA} = ?"
+                    val selectionArgs = arrayOf(path)
+                    context.contentResolver.query(contentUri, projection, selection, selectionArgs, null)?.use { cursor ->
+                        if (cursor.moveToFirst()) {
+                            val id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID))
+                            val deleteUri = Uri.withAppendedPath(contentUri, id.toString())
+                            context.contentResolver.delete(deleteUri, null, null)
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+
+            // Step 2: Delete the physical file
             if (file.exists()) {
                 file.delete()
                 addLog("File dihapus: ${file.name}", LogLevel.INFO, "STORAGE")
             }
+
+            // Step 3: Clear completedOutputPath if it matches
+            if (_uiState.value.completedOutputPath == path) {
+                _uiState.update { it.copy(completedOutputPath = null) }
+            }
+
+            // Step 4: Notify MediaScanner about parent directory changes
+            file.parentFile?.let { parent ->
+                try {
+                    MediaScannerConnection.scanFile(context, arrayOf(parent.absolutePath), null, null)
+                } catch (_: Exception) {}
+            }
+
+            // Step 5: Rebuild history
             refreshEncodedHistory()
         }
+    }
+
+    fun requestDeleteHistoryItem(item: EncodedFileItem) {
+        _uiState.update { it.copy(pendingDeleteItem = item) }
+    }
+
+    fun confirmDeleteHistoryItem() {
+        val item = _uiState.value.pendingDeleteItem ?: return
+        _uiState.update { it.copy(pendingDeleteItem = null, pendingRemovalPaths = it.pendingRemovalPaths + item.path) }
+        viewModelScope.launch {
+            delay(350)
+            deleteHistoryItem(item.path)
+            _uiState.update { it.copy(pendingRemovalPaths = it.pendingRemovalPaths - item.path) }
+        }
+    }
+
+    fun dismissDeleteDialog() {
+        _uiState.update { it.copy(pendingDeleteItem = null) }
+    }
+
+    fun requestCancelCompression() {
+        _uiState.update { it.copy(showCancelEncodingDialog = true) }
+    }
+
+    fun confirmCancelCompression() {
+        _uiState.update { it.copy(showCancelEncodingDialog = false) }
+        cancelCompression()
+    }
+
+    fun dismissCancelDialog() {
+        _uiState.update { it.copy(showCancelEncodingDialog = false) }
     }
 
     fun clearSelectedVideo() {
@@ -931,17 +1007,48 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
 
     fun cancelCompression() {
         val context = getApplication<Application>().applicationContext
+        val state = _uiState.value
+
+        // Find and mark active encoding item for deferred removal
+        val activeItem = state.encodedHistory.firstOrNull { it.isEncodingActive }
+        if (activeItem != null) {
+            _uiState.update { it.copy(pendingRemovalPaths = it.pendingRemovalPaths + activeItem.path) }
+        }
+
         val serviceIntent = Intent(context, EncodingService::class.java).apply {
             action = EncodingService.ACTION_CANCEL
         }
         context.startService(serviceIntent)
         addLog("Mengirim perintah pembatalan encoding ke service.", LogLevel.WARNING, "USER")
+
         _uiState.update {
             it.copy(
                 isEncoding = false,
                 encodingProgress = 0,
                 activeEncodingFileName = null
             )
+        }
+
+        // Deferred removal after animation completes
+        if (activeItem != null) {
+            viewModelScope.launch {
+                delay(350)
+                // Delete partial file
+                try {
+                    val partialFile = File(activeItem.path)
+                    if (partialFile.exists()) {
+                        partialFile.delete()
+                        addLog("File sisa dihapus: ${partialFile.name}", LogLevel.INFO, "STORAGE")
+                    }
+                } catch (_: Exception) {}
+                val updatedHistory = _uiState.value.encodedHistory.filter { !it.isEncodingActive }
+                _uiState.update {
+                    it.copy(
+                        encodedHistory = updatedHistory,
+                        pendingRemovalPaths = it.pendingRemovalPaths - activeItem.path
+                    )
+                }
+            }
         }
     }
 

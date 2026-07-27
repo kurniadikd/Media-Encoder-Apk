@@ -78,6 +78,7 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonColors
 import androidx.compose.material3.ButtonDefaults
@@ -109,6 +110,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -303,8 +305,8 @@ fun M3ExpressiveFabMenuItem(
     icon: @Composable () -> Unit,
     label: String,
     modifier: Modifier = Modifier,
-    containerColor: Color = MaterialTheme.colorScheme.primaryContainer,
-    contentColor: Color = MaterialTheme.colorScheme.onPrimaryContainer
+    containerColor: Color = MaterialTheme.colorScheme.primary,
+    contentColor: Color = MaterialTheme.colorScheme.onPrimary
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
@@ -731,8 +733,8 @@ fun MainScreenView(
                 // Unified Encoded File List (Contains active encoding items AND finished history)
                 UnifiedMediaListSection(
                     uiState = uiState,
-                    onCancelEncoding = { viewModel.cancelCompression() },
-                    onDelete = { viewModel.deleteHistoryItem(it.path) },
+                    onCancelEncoding = { viewModel.requestCancelCompression() },
+                    onDelete = { viewModel.requestDeleteHistoryItem(it) },
                     onPlay = { item ->
                         try {
                             val file = File(item.path)
@@ -970,17 +972,37 @@ fun MainScreenView(
                 // Official Medium Primary Extended FloatingActionButton with Auto-Shrink on Scroll
                 ExtendedFloatingActionButton(
                     text = {
-                        Text(
-                            text = if (isFabMenuExpanded) "Tutup" else "Input File",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                        )
+                        AnimatedContent(
+                            targetState = isFabMenuExpanded,
+                            transitionSpec = {
+                                (fadeIn(tween(200)) + slideInVertically(tween(200)) { it / 4 }).togetherWith(
+                                    fadeOut(tween(150)) + slideOutVertically(tween(150)) { -it / 4 }
+                                )
+                            },
+                            label = "fab_text"
+                        ) { expanded ->
+                            Text(
+                                text = if (expanded) "Tutup" else "Input File",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                            )
+                        }
                     },
                     icon = {
-                        Icon(
-                            imageVector = if (isFabMenuExpanded) Icons.Default.Close else Icons.Default.Add,
-                            contentDescription = null,
-                            modifier = Modifier.size(24.dp)
-                        )
+                        AnimatedContent(
+                            targetState = isFabMenuExpanded,
+                            transitionSpec = {
+                                (fadeIn(tween(200)) + scaleIn(initialScale = 0.8f, animationSpec = tween(200))).togetherWith(
+                                    fadeOut(tween(150)) + scaleOut(targetScale = 0.8f, animationSpec = tween(150))
+                                )
+                            },
+                            label = "fab_icon"
+                        ) { expanded ->
+                            Icon(
+                                imageVector = if (expanded) Icons.Default.Close else Icons.Default.Add,
+                                contentDescription = null,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
                     },
                     onClick = { isFabMenuExpanded = !isFabMenuExpanded },
                     expanded = isFabMenuExpanded || isScrollAtTop,
@@ -990,6 +1012,64 @@ fun MainScreenView(
                     elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp)
                 )
             }
+        }
+
+        // Delete Confirmation Dialog
+        uiState.pendingDeleteItem?.let { item ->
+            AlertDialog(
+                onDismissRequest = { viewModel.dismissDeleteDialog() },
+                title = {
+                    Text(
+                        text = "Hapus File?",
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                    )
+                },
+                text = {
+                    Text(
+                        text = "Yakin ingin menghapus file \"${item.name}\"? Tindakan ini tidak dapat dibatalkan.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                },
+                confirmButton = {
+                    Button(onClick = { viewModel.confirmDeleteHistoryItem() }) {
+                        Text("Hapus")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { viewModel.dismissDeleteDialog() }) {
+                        Text("Batal")
+                    }
+                }
+            )
+        }
+
+        // Cancel Encoding Confirmation Dialog
+        if (uiState.showCancelEncodingDialog) {
+            AlertDialog(
+                onDismissRequest = { viewModel.dismissCancelDialog() },
+                title = {
+                    Text(
+                        text = "Hentikan Encoding?",
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                    )
+                },
+                text = {
+                    Text(
+                        text = "Yakin ingin menghentikan proses encoding yang sedang berjalan? File output mungkin tidak sempurna.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                },
+                confirmButton = {
+                    Button(onClick = { viewModel.confirmCancelCompression() }) {
+                        Text("Ya, Hentikan")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { viewModel.dismissCancelDialog() }) {
+                        Text("Batal")
+                    }
+                }
+            )
         }
     }
 }
@@ -1032,47 +1112,16 @@ fun PreprocessScreenView(
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
             )
         },
-        bottomBar = {
-            val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-            val bottomPadding = if (navBarBottom > 0.dp) navBarBottom + 16.dp else 24.dp
-
-            Surface(
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = bottomPadding),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text("Estimasi Ukuran", style = MaterialTheme.typography.labelSmall)
-                        Text(
-                            text = String.format(Locale.US, "%.2f MB", uiState.estimatedSizeMb),
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-
-                    // Native M3 Expressive Action Button with Shape Morphing & Spring Physics
-                    M3ExpressiveButton(
-                        onClick = { viewModel.startCompression() },
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                    ) {
-                        Icon(Icons.Default.PlayArrow, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Mulai Pengodean Hardware", fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        }
+        bottomBar = {}
     ) { innerPadding ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+        ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -1352,7 +1401,35 @@ fun PreprocessScreenView(
 
 
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(120.dp))
+        }
+
+        val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+        val fabBottomPadding = if (navBarBottom > 0.dp) navBarBottom + 20.dp else 36.dp
+
+        ExtendedFloatingActionButton(
+            text = {
+                Text(
+                    text = "Mulai",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                )
+            },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.PlayArrow,
+                    contentDescription = null,
+                    modifier = Modifier.size(24.dp)
+                )
+            },
+            onClick = { viewModel.startCompression() },
+            containerColor = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onPrimary,
+            shape = RoundedCornerShape(20.dp),
+            elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp),
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 16.dp, bottom = fabBottomPadding)
+        )
         }
     }
 }
@@ -1610,16 +1687,46 @@ fun UnifiedMediaListSection(
                 }
             }
 
-            // Render Unified Media Items in a single list (active encoding item and finished items share the same card container!)
+            // Render Unified Media Items with native M3 Expressive spring animations
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 uiState.encodedHistory.forEach { item ->
-                    UnifiedMediaCardItem(
-                        item = item,
-                        onCancel = onCancelEncoding,
-                        onPlay = { onPlay(item) },
-                        onShare = { onShare(item) },
-                        onDelete = { onDelete(item) }
-                    )
+                    val isRemoving = item.path in uiState.pendingRemovalPaths
+                    AnimatedVisibility(
+                        visible = !isRemoving,
+                        enter = expandVertically(
+                            spring(
+                                stiffness = Spring.StiffnessMediumLow,
+                                dampingRatio = Spring.DampingRatioMediumBouncy
+                            )
+                        ) + fadeIn(
+                            spring(
+                                stiffness = Spring.StiffnessMedium,
+                                dampingRatio = Spring.DampingRatioNoBouncy
+                            )
+                        ),
+                        exit = shrinkVertically(
+                            spring(
+                                stiffness = Spring.StiffnessMediumLow,
+                                dampingRatio = Spring.DampingRatioNoBouncy
+                            )
+                        ) + fadeOut(
+                            tween(200)
+                        ) + scaleOut(
+                            targetScale = 0.92f,
+                            animationSpec = spring(
+                                stiffness = Spring.StiffnessMedium,
+                                dampingRatio = Spring.DampingRatioNoBouncy
+                            )
+                        )
+                    ) {
+                        UnifiedMediaCardItem(
+                            item = item,
+                            onCancel = onCancelEncoding,
+                            onPlay = { onPlay(item) },
+                            onShare = { onShare(item) },
+                            onDelete = { onDelete(item) }
+                        )
+                    }
                 }
             }
         }
