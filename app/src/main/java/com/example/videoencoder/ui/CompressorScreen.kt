@@ -8,6 +8,7 @@ import android.provider.MediaStore
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -649,21 +650,21 @@ fun MainScreenView(
         isFabMenuExpanded = false
     }
 
-    // Native SAF Document Pickers for Video, Image, and Audio
+    // Native Media Pickers (Photo/Video Picker API for Video & Images, GetContent for Audio)
     val videoPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
+        contract = ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         uri?.let { viewModel.onMediaSelected(it, MediaType.VIDEO) }
     }
 
     val imagePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
+        contract = ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         uri?.let { viewModel.onMediaSelected(it, MediaType.IMAGE) }
     }
 
     val audioPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
+        contract = ActivityResultContracts.GetContent()
     ) { uri ->
         uri?.let { viewModel.onMediaSelected(it, MediaType.AUDIO) }
     }
@@ -934,31 +935,31 @@ fun MainScreenView(
                         horizontalAlignment = Alignment.End,
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        // 1. Video SAF Item
+                        // 1. Video Item (Native Photo/Video Picker API Video Only)
                         M3ExpressiveFabMenuItem(
                             onClick = {
                                 isFabMenuExpanded = false
-                                videoPickerLauncher.launch(arrayOf("video/*", "application/octet-stream", "video/x-msvideo", "video/x-ms-wmv", "video/x-matroska", "video/avi", "*/*"))
+                                videoPickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
                             },
                             icon = { Icon(Icons.Default.Movie, contentDescription = null, modifier = Modifier.size(24.dp)) },
                             label = "Video"
                         )
 
-                        // 2. Gambar SAF Item
+                        // 2. Gambar Item (Native Photo/Video Picker API Image Only)
                         M3ExpressiveFabMenuItem(
                             onClick = {
                                 isFabMenuExpanded = false
-                                imagePickerLauncher.launch(arrayOf("image/*"))
+                                imagePickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                             },
                             icon = { Icon(Icons.Default.Image, contentDescription = null, modifier = Modifier.size(24.dp)) },
                             label = "Gambar"
                         )
 
-                        // 3. Audio SAF Item
+                        // 3. Audio Item (Native Audio Picker)
                         M3ExpressiveFabMenuItem(
                             onClick = {
                                 isFabMenuExpanded = false
-                                audioPickerLauncher.launch(arrayOf("audio/*"))
+                                audioPickerLauncher.launch("audio/*")
                             },
                             icon = { Icon(Icons.Default.Audiotrack, contentDescription = null, modifier = Modifier.size(24.dp)) },
                             label = "Audio"
