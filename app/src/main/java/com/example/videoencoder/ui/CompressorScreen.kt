@@ -58,6 +58,9 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -677,9 +680,9 @@ fun MainScreenView(
 
     Box(modifier = Modifier.fillMaxSize()) {
         // 1. Scaffold & List Content
-        val mainScrollState = rememberScrollState()
+        val lazyListState = rememberLazyListState()
         val isScrollAtTop by remember {
-            derivedStateOf { mainScrollState.value == 0 }
+            derivedStateOf { lazyListState.firstVisibleItemIndex == 0 && lazyListState.firstVisibleItemScrollOffset == 0 }
         }
 
         Scaffold(
@@ -726,178 +729,208 @@ fun MainScreenView(
                 )
             }
         ) { innerPadding ->
-            Column(
+            LazyColumn(
+                state = lazyListState,
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
-                    .verticalScroll(mainScrollState)
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(20.dp)
+                    .padding(horizontal = 16.dp),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 20.dp, bottom = 150.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                // Unified Encoded File List (Contains active encoding items AND finished history)
-                UnifiedMediaListSection(
-                    uiState = uiState,
-                    onCancelEncoding = { viewModel.requestCancelCompression() },
-                    onDelete = { viewModel.requestDeleteHistoryItem(it) },
-                    onPlay = { item ->
-                        try {
-                            val file = File(item.path)
-                            if (file.exists()) {
-                                val exactMime = when {
-                                    file.name.endsWith(".mp4", ignoreCase = true) -> "video/mp4"
-                                    file.name.endsWith(".mkv", ignoreCase = true) -> "video/x-matroska"
-                                    file.name.endsWith(".webm", ignoreCase = true) -> "video/webm"
-                                    file.name.endsWith(".avi", ignoreCase = true) -> "video/avi"
-                                    file.name.endsWith(".jpg", ignoreCase = true) || file.name.endsWith(".jpeg", ignoreCase = true) -> "image/jpeg"
-                                    file.name.endsWith(".png", ignoreCase = true) -> "image/png"
-                                    file.name.endsWith(".webp", ignoreCase = true) -> "image/webp"
-                                    file.name.endsWith(".m4a", ignoreCase = true) || file.name.endsWith(".aac", ignoreCase = true) -> "audio/aac"
-                                    file.name.endsWith(".mp3", ignoreCase = true) -> "audio/mpeg"
-                                    else -> when (item.mediaType) {
-                                        MediaType.IMAGE -> "image/*"
-                                        MediaType.AUDIO -> "audio/*"
-                                        else -> "video/*"
-                                    }
-                                }
-
-                                val fileProviderUri = try {
-                                    FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-                                } catch (_: Exception) {
-                                    Uri.fromFile(file)
-                                }
-
-                                val getMediaStoreUri: () -> Uri? = {
-                                    try {
-                                        val contentUri = when (item.mediaType) {
-                                            MediaType.IMAGE -> MediaStore.Images.Media.EXTERNAL_CONTENT_URI
-                                            MediaType.AUDIO -> MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
-                                            else -> MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-                                        }
-                                        val projection = arrayOf(MediaStore.MediaColumns._ID)
-                                        val selection = "${MediaStore.MediaColumns.DATA} = ?"
-                                        val selectionArgs = arrayOf(file.absolutePath)
-                                        context.contentResolver.query(
-                                            contentUri,
-                                            projection,
-                                            selection,
-                                            selectionArgs,
-                                            null
-                                        )?.use { cursor ->
-                                            if (cursor.moveToFirst()) {
-                                                val id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID))
-                                                ContentUris.withAppendedId(contentUri, id)
-                                            } else null
-                                        }
-                                    } catch (_: Exception) { null }
-                                }
-
-                                val launchIntent: (Uri) -> Unit = { targetUri ->
-                                    val targetIntent = Intent(Intent.ACTION_VIEW).apply {
-                                        setDataAndType(targetUri, exactMime)
-                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                        addFlags(Intent.FLAG_GRANT_PREFIX_URI_PERMISSION)
-                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                    }
-
-                                    val resInfoList = context.packageManager.queryIntentActivities(targetIntent, PackageManager.MATCH_DEFAULT_ONLY)
-                                    for (resolveInfo in resInfoList) {
-                                        val pkg = resolveInfo.activityInfo.packageName
-                                        try {
-                                            context.grantUriPermission(pkg, targetUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                        } catch (_: Exception) {}
-                                    }
-
-                                    try {
-                                        val chooser = Intent.createChooser(targetIntent, "Buka Berkas Dengan").apply {
-                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                        }
-                                        context.startActivity(chooser)
-                                    } catch (_: Exception) {
-                                        Toast.makeText(context, "Tidak ada aplikasi penampil media yang cocok.", Toast.LENGTH_SHORT).show()
-                                    }
-                                }
-
-                                val existingMediaStoreUri = getMediaStoreUri()
-                                if (existingMediaStoreUri != null) {
-                                    launchIntent(existingMediaStoreUri)
-                                } else {
-                                    android.media.MediaScannerConnection.scanFile(
-                                        context.applicationContext,
-                                        arrayOf(file.absolutePath),
-                                        arrayOf(exactMime)
-                                    ) { _, scannedUri ->
-                                        val uriToUse = scannedUri ?: getMediaStoreUri() ?: fileProviderUri
-                                        android.os.Handler(android.os.Looper.getMainLooper()).post {
-                                            launchIntent(uriToUse)
-                                        }
-                                    }
-                                }
-                            } else {
-                                Toast.makeText(context, "Berkas tidak ditemukan: ${file.name}", Toast.LENGTH_SHORT).show()
-                            }
-                        } catch (e: Exception) {
-                            Toast.makeText(context, "Gagal membuka media: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
-                        }
-                    },
-                    onShare = { item ->
-                        try {
-                            val file = File(item.path)
-                            if (file.exists()) {
-                                val exactMime = when {
-                                    file.name.endsWith(".mp4", ignoreCase = true) -> "video/mp4"
-                                    file.name.endsWith(".jpg", ignoreCase = true) || file.name.endsWith(".jpeg", ignoreCase = true) -> "image/jpeg"
-                                    file.name.endsWith(".png", ignoreCase = true) -> "image/png"
-                                    file.name.endsWith(".webp", ignoreCase = true) -> "image/webp"
-                                    file.name.endsWith(".m4a", ignoreCase = true) || file.name.endsWith(".aac", ignoreCase = true) -> "audio/aac"
-                                    else -> "video/mp4"
-                                }
-
-                                val fileProviderUri = try {
-                                    FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-                                } catch (_: Exception) {
-                                    Uri.fromFile(file)
-                                }
-
-                                val launchShare: (Uri) -> Unit = { targetUri ->
-                                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                        type = exactMime
-                                        putExtra(Intent.EXTRA_STREAM, targetUri)
-                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                    }
-
-                                    val resInfoList = context.packageManager.queryIntentActivities(shareIntent, PackageManager.MATCH_DEFAULT_ONLY)
-                                    for (resolveInfo in resInfoList) {
-                                        val pkg = resolveInfo.activityInfo.packageName
-                                        try {
-                                            context.grantUriPermission(pkg, targetUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                        } catch (_: Exception) {}
-                                    }
-
-                                    val chooser = Intent.createChooser(shareIntent, "Bagikan Berkas").apply {
-                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                    }
-                                    context.startActivity(chooser)
-                                }
-
-                                android.media.MediaScannerConnection.scanFile(
-                                    context.applicationContext,
-                                    arrayOf(file.absolutePath),
-                                    arrayOf(exactMime)
-                                ) { _, scannedUri ->
-                                    val uriToUse = scannedUri ?: fileProviderUri
-                                    launchShare(uriToUse)
-                                }
-                            } else {
-                                Toast.makeText(context, "Berkas tidak ditemukan: ${file.name}", Toast.LENGTH_SHORT).show()
-                            }
-                        } catch (e: Exception) {
-                            Toast.makeText(context, "Gagal membagikan media: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                // Header
+                if (uiState.encodedHistory.isEmpty()) {
+                    item(key = "empty_state") {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 120.dp, horizontal = 24.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Untuk memulai, pilih file dengan klik tombol +",
+                                style = MaterialTheme.typography.bodyLarge.copy(
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                                ),
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
                         }
                     }
-                )
+                } else {
+                    item(key = "list_header") {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Default.FolderZip,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    "Daftar File & Proses Media",
+                                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                                )
+                            }
+                            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer) {
+                                AnimatedContent(
+                                    targetState = uiState.encodedHistory.size,
+                                    transitionSpec = {
+                                        (fadeIn(tween(200)) + scaleIn(initialScale = 0.8f))
+                                            .togetherWith(fadeOut(tween(150)) + scaleOut(targetScale = 0.8f))
+                                    },
+                                    label = "file_count"
+                                ) { count ->
+                                    Text(
+                                        text = "$count File",
+                                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
 
-                Spacer(modifier = Modifier.height(130.dp))
+                    // Animated media item list
+                    items(
+                        items = uiState.encodedHistory,
+                        key = { it.id }
+                    ) { item ->
+                        UnifiedMediaCardItem(
+                            modifier = Modifier.animateItem(
+                                fadeInSpec = tween(durationMillis = 250),
+                                fadeOutSpec = tween(durationMillis = 220),
+                                placementSpec = spring(
+                                    stiffness = Spring.StiffnessMediumLow,
+                                    dampingRatio = Spring.DampingRatioNoBouncy
+                                )
+                            ),
+                            item = item,
+                            onCancel = { viewModel.requestCancelCompression() },
+                            onDelete = { viewModel.requestDeleteHistoryItem(item) },
+                            onPlay = {
+                                try {
+                                    val file = File(item.path)
+                                    if (file.exists()) {
+                                        val exactMime = when {
+                                            file.name.endsWith(".mp4", ignoreCase = true) -> "video/mp4"
+                                            file.name.endsWith(".mkv", ignoreCase = true) -> "video/x-matroska"
+                                            file.name.endsWith(".webm", ignoreCase = true) -> "video/webm"
+                                            file.name.endsWith(".avi", ignoreCase = true) -> "video/avi"
+                                            file.name.endsWith(".jpg", ignoreCase = true) || file.name.endsWith(".jpeg", ignoreCase = true) -> "image/jpeg"
+                                            file.name.endsWith(".png", ignoreCase = true) -> "image/png"
+                                            file.name.endsWith(".webp", ignoreCase = true) -> "image/webp"
+                                            file.name.endsWith(".m4a", ignoreCase = true) || file.name.endsWith(".aac", ignoreCase = true) -> "audio/aac"
+                                            file.name.endsWith(".mp3", ignoreCase = true) -> "audio/mpeg"
+                                            else -> when (item.mediaType) {
+                                                MediaType.IMAGE -> "image/*"
+                                                MediaType.AUDIO -> "audio/*"
+                                                else -> "video/*"
+                                            }
+                                        }
+                                        val fileProviderUri = try {
+                                            FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                                        } catch (_: Exception) { Uri.fromFile(file) }
+                                        val getMediaStoreUri: () -> Uri? = {
+                                            try {
+                                                val contentUri = when (item.mediaType) {
+                                                    MediaType.IMAGE -> MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+                                                    MediaType.AUDIO -> MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+                                                    else -> MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+                                                }
+                                                context.contentResolver.query(
+                                                    contentUri,
+                                                    arrayOf(MediaStore.MediaColumns._ID),
+                                                    "${MediaStore.MediaColumns.DATA} = ?",
+                                                    arrayOf(file.absolutePath), null
+                                                )?.use { cursor ->
+                                                    if (cursor.moveToFirst()) {
+                                                        val id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID))
+                                                        ContentUris.withAppendedId(contentUri, id)
+                                                    } else null
+                                                }
+                                            } catch (_: Exception) { null }
+                                        }
+                                        val launchIntent: (Uri) -> Unit = { targetUri ->
+                                            val targetIntent = Intent(Intent.ACTION_VIEW).apply {
+                                                setDataAndType(targetUri, exactMime)
+                                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                                addFlags(Intent.FLAG_GRANT_PREFIX_URI_PERMISSION)
+                                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                            }
+                                            val resInfoList = context.packageManager.queryIntentActivities(targetIntent, PackageManager.MATCH_DEFAULT_ONLY)
+                                            for (resolveInfo in resInfoList) {
+                                                try { context.grantUriPermission(resolveInfo.activityInfo.packageName, targetUri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) {}
+                                            }
+                                            try {
+                                                context.startActivity(Intent.createChooser(targetIntent, "Buka Berkas Dengan").apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
+                                            } catch (_: Exception) {
+                                                Toast.makeText(context, "Tidak ada aplikasi penampil media yang cocok.", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                        val existingUri = getMediaStoreUri()
+                                        if (existingUri != null) {
+                                            launchIntent(existingUri)
+                                        } else {
+                                            android.media.MediaScannerConnection.scanFile(
+                                                context.applicationContext, arrayOf(file.absolutePath), arrayOf(exactMime)
+                                            ) { _, scannedUri ->
+                                                val uriToUse = scannedUri ?: getMediaStoreUri() ?: fileProviderUri
+                                                android.os.Handler(android.os.Looper.getMainLooper()).post { launchIntent(uriToUse) }
+                                            }
+                                        }
+                                    } else {
+                                        Toast.makeText(context, "Berkas tidak ditemukan: ${file.name}", Toast.LENGTH_SHORT).show()
+                                    }
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Gagal membuka media: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                                }
+                            },
+                            onShare = {
+                                try {
+                                    val file = File(item.path)
+                                    if (file.exists()) {
+                                        val exactMime = when {
+                                            file.name.endsWith(".mp4", ignoreCase = true) -> "video/mp4"
+                                            file.name.endsWith(".jpg", ignoreCase = true) || file.name.endsWith(".jpeg", ignoreCase = true) -> "image/jpeg"
+                                            file.name.endsWith(".png", ignoreCase = true) -> "image/png"
+                                            file.name.endsWith(".webp", ignoreCase = true) -> "image/webp"
+                                            file.name.endsWith(".m4a", ignoreCase = true) || file.name.endsWith(".aac", ignoreCase = true) -> "audio/aac"
+                                            else -> "video/mp4"
+                                        }
+                                        val fileProviderUri = try {
+                                            FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                                        } catch (_: Exception) { Uri.fromFile(file) }
+                                        val launchShare: (Uri) -> Unit = { targetUri ->
+                                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                                type = exactMime
+                                                putExtra(Intent.EXTRA_STREAM, targetUri)
+                                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                            }
+                                            val resInfoList = context.packageManager.queryIntentActivities(shareIntent, PackageManager.MATCH_DEFAULT_ONLY)
+                                            for (ri in resInfoList) {
+                                                try { context.grantUriPermission(ri.activityInfo.packageName, targetUri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) {}
+                                            }
+                                            context.startActivity(Intent.createChooser(shareIntent, "Bagikan Berkas").apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
+                                        }
+                                        android.media.MediaScannerConnection.scanFile(
+                                            context.applicationContext, arrayOf(file.absolutePath), arrayOf(exactMime)
+                                        ) { _, scannedUri -> launchShare(scannedUri ?: fileProviderUri) }
+                                    } else {
+                                        Toast.makeText(context, "Berkas tidak ditemukan: ${item.path}", Toast.LENGTH_SHORT).show()
+                                    }
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Gagal membagikan media: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        )
+                    }
+                }
             }
         }
 
@@ -1750,23 +1783,17 @@ fun UnifiedMediaListSection(
                 }
             }
 
-            // Render Unified Media Items smoothly with native Expressive Motion animations
+            // Render Unified Media Items smoothly
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 uiState.encodedHistory.forEach { item ->
                     key(item.id) {
-                        AnimatedVisibility(
-                            visible = item.path !in uiState.pendingRemovalPaths,
-                            enter = fadeIn(spring(stiffness = Spring.StiffnessMediumLow)) + expandVertically(spring(stiffness = Spring.StiffnessMediumLow)),
-                            exit = fadeOut(tween(180)) + shrinkVertically(spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioNoBouncy)) + scaleOut(targetScale = 0.92f)
-                        ) {
-                            UnifiedMediaCardItem(
-                                item = item,
-                                onCancel = onCancelEncoding,
-                                onPlay = { onPlay(item) },
-                                onShare = { onShare(item) },
-                                onDelete = { onDelete(item) }
-                            )
-                        }
+                        UnifiedMediaCardItem(
+                            item = item,
+                            onCancel = onCancelEncoding,
+                            onPlay = { onPlay(item) },
+                            onShare = { onShare(item) },
+                            onDelete = { onDelete(item) }
+                        )
                     }
                 }
             }
@@ -1782,13 +1809,14 @@ fun UnifiedMediaListSection(
 @Composable
 fun UnifiedMediaCardItem(
     item: EncodedFileItem,
+    modifier: Modifier = Modifier,
     onCancel: () -> Unit,
     onPlay: () -> Unit,
     onShare: () -> Unit,
     onDelete: () -> Unit
 ) {
     M3ExpressiveCard(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .animateContentSize(
                 animationSpec = ExpressiveMotion.boundsSpring
