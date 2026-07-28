@@ -582,11 +582,12 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun deleteHistoryItem(path: String) {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             val context = getApplication<Application>().applicationContext
             val file = File(path)
 
-            // Step 1: Delete MediaStore entries from all content providers
+            // Step 1: Delete MediaStore entries — try ALL three content URI types
+            // Method A: Query by _ID then delete by URI (most precise)
             val contentUris = listOf(
                 MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
                 MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
@@ -598,12 +599,23 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                     val selection = "${MediaStore.MediaColumns.DATA} = ?"
                     val selectionArgs = arrayOf(path)
                     context.contentResolver.query(contentUri, projection, selection, selectionArgs, null)?.use { cursor ->
-                        if (cursor.moveToFirst()) {
+                        while (cursor.moveToNext()) {
                             val id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID))
-                            val deleteUri = Uri.withAppendedPath(contentUri, id.toString())
-                            context.contentResolver.delete(deleteUri, null, null)
+                            val deleteUri = android.content.ContentUris.withAppendedId(contentUri, id)
+                            try { context.contentResolver.delete(deleteUri, null, null) } catch (_: Exception) {}
                         }
                     }
+                } catch (_: Exception) {}
+            }
+
+            // Method B: Direct delete by DATA path selection (catches entries missed by Method A)
+            for (contentUri in contentUris) {
+                try {
+                    context.contentResolver.delete(
+                        contentUri,
+                        "${MediaStore.MediaColumns.DATA} = ?",
+                        arrayOf(path)
+                    )
                 } catch (_: Exception) {}
             }
 
@@ -618,7 +630,19 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                 _uiState.update { it.copy(completedOutputPath = null) }
             }
 
-            // Step 4: Notify MediaScanner about parent directory changes
+            // Step 4: Scan the EXACT deleted file path — MediaScanner will see file is gone
+            // and remove the stale thumbnail/entry from MediaStore (fixes ghost thumbnails in
+            // Google Photos, Gallery, etc.)
+            try {
+                MediaScannerConnection.scanFile(
+                    context,
+                    arrayOf(path),          // scan the deleted file path specifically
+                    null,
+                    null
+                )
+            } catch (_: Exception) {}
+
+            // Also scan parent directory for good measure
             file.parentFile?.let { parent ->
                 try {
                     MediaScannerConnection.scanFile(context, arrayOf(parent.absolutePath), null, null)
@@ -629,6 +653,7 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
             refreshEncodedHistory()
         }
     }
+
 
     fun requestConfirmAction(item: EncodedFileItem) {
         val actionType = when {
@@ -646,12 +671,7 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
         val item = action.item
         when (action.type) {
             PendingActionType.DELETE_FILE -> {
-                _uiState.update { it.copy(pendingRemovalPaths = it.pendingRemovalPaths + item.path) }
-                viewModelScope.launch {
-                    delay(200)
-                    deleteHistoryItem(item.path)
-                    _uiState.update { it.copy(pendingRemovalPaths = it.pendingRemovalPaths - item.path) }
-                }
+                deleteHistoryItem(item.path)
             }
             PendingActionType.REMOVE_FROM_QUEUE -> {
                 synchronized(encodingQueue) {
