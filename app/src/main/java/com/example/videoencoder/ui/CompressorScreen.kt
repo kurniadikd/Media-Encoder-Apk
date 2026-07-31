@@ -153,6 +153,15 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
+import androidx.compose.foundation.layout.offset
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.ContainedLoadingIndicator
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.platform.LocalDensity
+
 // Official Material Design 3 Expressive System Guidelines Implementation
 
 @Composable
@@ -646,7 +655,7 @@ fun CompressorScreen(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun MainScreenView(
     viewModel: CompressorViewModel,
@@ -659,7 +668,7 @@ fun MainScreenView(
         isFabMenuExpanded = false
     }
 
-    // Native Media Pickers (Photo/Video Picker API for Video & Images, GetContent for Audio)
+    // Native Media Pickers
     val videoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri ->
@@ -678,13 +687,36 @@ fun MainScreenView(
         uri?.let { viewModel.onMediaSelected(it, MediaType.AUDIO) }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        // 1. Scaffold & List Content
-        val lazyListState = rememberLazyListState()
-        val isScrollAtTop by remember {
-            derivedStateOf { lazyListState.firstVisibleItemIndex == 0 && lazyListState.firstVisibleItemScrollOffset == 0 }
-        }
+    val lazyListState = rememberLazyListState()
+    val isScrollAtTop by remember {
+        derivedStateOf { lazyListState.firstVisibleItemIndex == 0 && lazyListState.firstVisibleItemScrollOffset == 0 }
+    }
 
+    val pullToRefreshState = rememberPullToRefreshState()
+    val density = LocalDensity.current
+
+    // 1. Jarak Tarikan Tanpa Batas Mentok (Sinergis 1:1 dengan Gestur Jari)
+    val pullDistanceDp = (pullToRefreshState.distanceFraction * 140).coerceAtLeast(0f).dp
+    val targetContentOffsetDp = if (uiState.isRefreshing) {
+        88.dp // Posisi istirahat saat aktif memuat ulang (refreshing)
+    } else {
+        pullDistanceDp
+    }
+
+    // 2. Single Source Spring Physics untuk Pergeseran Daftar & Indikator
+    val animatedContentOffsetDp by animateDpAsState(
+        targetValue = targetContentOffsetDp,
+        animationSpec = spring(
+            stiffness = Spring.StiffnessMediumLow,
+            dampingRatio = Spring.DampingRatioMediumBouncy
+        ),
+        label = "pull_spring_sync"
+    )
+
+    // ROOT CONTAINER (Layer Paling Luar)
+    Box(modifier = Modifier.fillMaxSize()) {
+
+        // LAYER 1: Scaffold, TopAppBar & Content Daftar File
         Scaffold(
             contentWindowInsets = WindowInsets(0, 0, 0, 0),
             topBar = {
@@ -715,7 +747,13 @@ fun MainScreenView(
                         }
                     },
                     actions = {
-                        // Native M3 Expressive Log Action Button
+                        M3ExpressiveFilledTonalIconButton(
+                            onClick = { viewModel.refreshEncodedHistory() },
+                            shape = CircleShape
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Refresh Daftar File")
+                        }
+                        Spacer(modifier = Modifier.width(4.dp))
                         M3ExpressiveFilledTonalIconButton(
                             onClick = { viewModel.navigateToLogsScreen() },
                             shape = CircleShape
@@ -729,386 +767,366 @@ fun MainScreenView(
                 )
             }
         ) { innerPadding ->
-            LazyColumn(
-                state = lazyListState,
+            val topBarHeightDp = innerPadding.calculateTopPadding()
+            val indicatorSizeDp = 48.dp
+
+            PullToRefreshBox(
+                isRefreshing = uiState.isRefreshing,
+                onRefresh = { viewModel.refreshEncodedHistory() },
+                state = pullToRefreshState,
+                indicator = {}, // Disosongkan karena ditaruh pada Layer Teratas di luar Scaffold
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
-                    .padding(horizontal = 16.dp),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 20.dp, bottom = 150.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                // Header
-                if (uiState.encodedHistory.isEmpty()) {
-                    item(key = "empty_state") {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 120.dp, horizontal = 24.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "Untuk memulai, pilih file dengan klik tombol +",
-                                style = MaterialTheme.typography.bodyLarge.copy(
-                                    fontWeight = FontWeight.Medium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                LazyColumn(
+                    state = lazyListState,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            // Menerapkan efek pegas pada pergeseran daftar
+                            translationY = with(density) { animatedContentOffsetDp.toPx() }
+                        }
+                        .padding(horizontal = 16.dp),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 20.dp, bottom = 150.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    if (uiState.encodedHistory.isEmpty()) {
+                        item(key = "empty_state") {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 120.dp, horizontal = 24.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "Untuk memulai, pilih file dengan klik tombol +",
+                                    style = MaterialTheme.typography.bodyLarge.copy(
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                                    ),
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                            }
+                        }
+                    } else {
+                        item(key = "list_header") {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        Icons.Default.FolderZip,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        "Daftar File & Proses Media",
+                                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                                    )
+                                }
+                                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer) {
+                                    AnimatedContent(
+                                        targetState = uiState.encodedHistory.size,
+                                        transitionSpec = {
+                                            (fadeIn(tween(200)) + scaleIn(initialScale = 0.8f))
+                                                .togetherWith(fadeOut(tween(150)) + scaleOut(targetScale = 0.8f))
+                                        },
+                                        label = "file_count"
+                                    ) { count ->
+                                        Text(
+                                            text = "$count File",
+                                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        items(
+                            items = uiState.encodedHistory,
+                            key = { it.id }
+                        ) { item ->
+                            UnifiedMediaCardItem(
+                                modifier = Modifier.animateItem(
+                                    fadeInSpec = tween(durationMillis = 250),
+                                    fadeOutSpec = tween(durationMillis = 220),
+                                    placementSpec = spring(
+                                        stiffness = Spring.StiffnessMediumLow,
+                                        dampingRatio = Spring.DampingRatioNoBouncy
+                                    )
                                 ),
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                item = item,
+                                onCancel = { viewModel.requestCancelCompression() },
+                                onDelete = { viewModel.requestDeleteHistoryItem(item) },
+                                onPlay = {
+                                    try {
+                                        val file = File(item.path)
+                                        if (file.exists()) {
+                                            val exactMime = when {
+                                                file.name.endsWith(".mp4", ignoreCase = true) -> "video/mp4"
+                                                file.name.endsWith(".mkv", ignoreCase = true) -> "video/x-matroska"
+                                                file.name.endsWith(".webm", ignoreCase = true) -> "video/webm"
+                                                file.name.endsWith(".avi", ignoreCase = true) -> "video/avi"
+                                                file.name.endsWith(".jpg", ignoreCase = true) || file.name.endsWith(".jpeg", ignoreCase = true) -> "image/jpeg"
+                                                file.name.endsWith(".png", ignoreCase = true) -> "image/png"
+                                                file.name.endsWith(".webp", ignoreCase = true) -> "image/webp"
+                                                file.name.endsWith(".m4a", ignoreCase = true) || file.name.endsWith(".aac", ignoreCase = true) -> "audio/aac"
+                                                file.name.endsWith(".mp3", ignoreCase = true) -> "audio/mpeg"
+                                                else -> when (item.mediaType) {
+                                                    MediaType.IMAGE -> "image/*"
+                                                    MediaType.AUDIO -> "audio/*"
+                                                    else -> "video/*"
+                                                }
+                                            }
+                                            val fileProviderUri = try {
+                                                FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                                            } catch (_: Exception) { Uri.fromFile(file) }
+                                            val getMediaStoreUri: () -> Uri? = {
+                                                try {
+                                                    val contentUri = when (item.mediaType) {
+                                                        MediaType.IMAGE -> MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+                                                        MediaType.AUDIO -> MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+                                                        else -> MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+                                                    }
+                                                    context.contentResolver.query(
+                                                        contentUri,
+                                                        arrayOf(MediaStore.MediaColumns._ID),
+                                                        "${MediaStore.MediaColumns.DATA} = ?",
+                                                        arrayOf(file.absolutePath), null
+                                                    )?.use { cursor ->
+                                                        if (cursor.moveToFirst()) {
+                                                            val id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID))
+                                                            ContentUris.withAppendedId(contentUri, id)
+                                                        } else null
+                                                    }
+                                                } catch (_: Exception) { null }
+                                            }
+                                            val launchIntent: (Uri) -> Unit = { targetUri ->
+                                                val targetIntent = Intent(Intent.ACTION_VIEW).apply {
+                                                    setDataAndType(targetUri, exactMime)
+                                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                                    addFlags(Intent.FLAG_GRANT_PREFIX_URI_PERMISSION)
+                                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                }
+                                                val resInfoList = context.packageManager.queryIntentActivities(targetIntent, PackageManager.MATCH_DEFAULT_ONLY)
+                                                for (resolveInfo in resInfoList) {
+                                                    try { context.grantUriPermission(resolveInfo.activityInfo.packageName, targetUri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) {}
+                                                }
+                                                try {
+                                                    context.startActivity(Intent.createChooser(targetIntent, "Buka Berkas Dengan").apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
+                                                } catch (_: Exception) {
+                                                    Toast.makeText(context, "Tidak ada aplikasi penampil media yang cocok.", Toast.LENGTH_SHORT).show()
+                                                }
+                                            }
+                                            val existingUri = getMediaStoreUri()
+                                            if (existingUri != null) {
+                                                launchIntent(existingUri)
+                                            } else {
+                                                android.media.MediaScannerConnection.scanFile(
+                                                    context.applicationContext, arrayOf(file.absolutePath), arrayOf(exactMime)
+                                                ) { _, scannedUri ->
+                                                    val uriToUse = scannedUri ?: getMediaStoreUri() ?: fileProviderUri
+                                                    android.os.Handler(android.os.Looper.getMainLooper()).post { launchIntent(uriToUse) }
+                                                }
+                                            }
+                                        } else {
+                                            Toast.makeText(context, "Berkas tidak ditemukan: ${file.name}", Toast.LENGTH_SHORT).show()
+                                        }
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "Gagal membuka media: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                                    }
+                                },
+                                onShare = {
+                                    try {
+                                        val file = File(item.path)
+                                        if (file.exists()) {
+                                            val exactMime = when {
+                                                file.name.endsWith(".mp4", ignoreCase = true) -> "video/mp4"
+                                                file.name.endsWith(".jpg", ignoreCase = true) || file.name.endsWith(".jpeg", ignoreCase = true) -> "image/jpeg"
+                                                file.name.endsWith(".png", ignoreCase = true) -> "image/png"
+                                                file.name.endsWith(".webp", ignoreCase = true) -> "image/webp"
+                                                file.name.endsWith(".m4a", ignoreCase = true) || file.name.endsWith(".aac", ignoreCase = true) -> "audio/aac"
+                                                else -> "video/mp4"
+                                            }
+                                            val fileProviderUri = try {
+                                                FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                                            } catch (_: Exception) { Uri.fromFile(file) }
+                                            val launchShare: (Uri) -> Unit = { targetUri ->
+                                                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                                    type = exactMime
+                                                    putExtra(Intent.EXTRA_STREAM, targetUri)
+                                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                }
+                                                val resInfoList = context.packageManager.queryIntentActivities(shareIntent, PackageManager.MATCH_DEFAULT_ONLY)
+                                                for (ri in resInfoList) {
+                                                    try { context.grantUriPermission(ri.activityInfo.packageName, targetUri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) {}
+                                                }
+                                                context.startActivity(Intent.createChooser(shareIntent, "Bagikan Berkas").apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
+                                            }
+                                            android.media.MediaScannerConnection.scanFile(
+                                                context.applicationContext, arrayOf(file.absolutePath), arrayOf(exactMime)
+                                            ) { _, scannedUri -> launchShare(scannedUri ?: fileProviderUri) }
+                                        } else {
+                                            Toast.makeText(context, "Berkas tidak ditemukan: ${item.path}", Toast.LENGTH_SHORT).show()
+                                        }
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "Gagal membagikan media: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                                    }
+                                }
                             )
                         }
                     }
-                } else {
-                    item(key = "list_header") {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    Icons.Default.FolderZip,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    "Daftar File & Proses Media",
-                                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-                                )
-                            }
-                            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer) {
-                                AnimatedContent(
-                                    targetState = uiState.encodedHistory.size,
-                                    transitionSpec = {
-                                        (fadeIn(tween(200)) + scaleIn(initialScale = 0.8f))
-                                            .togetherWith(fadeOut(tween(150)) + scaleOut(targetScale = 0.8f))
-                                    },
-                                    label = "file_count"
-                                ) { count ->
-                                    Text(
-                                        text = "$count File",
-                                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
+                }
+            }
 
-                    // Animated media item list
-                    items(
-                        items = uiState.encodedHistory,
-                        key = { it.id }
-                    ) { item ->
-                        UnifiedMediaCardItem(
-                            modifier = Modifier.animateItem(
-                                fadeInSpec = tween(durationMillis = 250),
-                                fadeOutSpec = tween(durationMillis = 220),
-                                placementSpec = spring(
-                                    stiffness = Spring.StiffnessMediumLow,
-                                    dampingRatio = Spring.DampingRatioNoBouncy
-                                )
-                            ),
-                            item = item,
-                            onCancel = { viewModel.requestCancelCompression() },
-                            onDelete = { viewModel.requestDeleteHistoryItem(item) },
-                            onPlay = {
-                                try {
-                                    val file = File(item.path)
-                                    if (file.exists()) {
-                                        val exactMime = when {
-                                            file.name.endsWith(".mp4", ignoreCase = true) -> "video/mp4"
-                                            file.name.endsWith(".mkv", ignoreCase = true) -> "video/x-matroska"
-                                            file.name.endsWith(".webm", ignoreCase = true) -> "video/webm"
-                                            file.name.endsWith(".avi", ignoreCase = true) -> "video/avi"
-                                            file.name.endsWith(".jpg", ignoreCase = true) || file.name.endsWith(".jpeg", ignoreCase = true) -> "image/jpeg"
-                                            file.name.endsWith(".png", ignoreCase = true) -> "image/png"
-                                            file.name.endsWith(".webp", ignoreCase = true) -> "image/webp"
-                                            file.name.endsWith(".m4a", ignoreCase = true) || file.name.endsWith(".aac", ignoreCase = true) -> "audio/aac"
-                                            file.name.endsWith(".mp3", ignoreCase = true) -> "audio/mpeg"
-                                            else -> when (item.mediaType) {
-                                                MediaType.IMAGE -> "image/*"
-                                                MediaType.AUDIO -> "audio/*"
-                                                else -> "video/*"
-                                            }
-                                        }
-                                        val fileProviderUri = try {
-                                            FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-                                        } catch (_: Exception) { Uri.fromFile(file) }
-                                        val getMediaStoreUri: () -> Uri? = {
-                                            try {
-                                                val contentUri = when (item.mediaType) {
-                                                    MediaType.IMAGE -> MediaStore.Images.Media.EXTERNAL_CONTENT_URI
-                                                    MediaType.AUDIO -> MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
-                                                    else -> MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-                                                }
-                                                context.contentResolver.query(
-                                                    contentUri,
-                                                    arrayOf(MediaStore.MediaColumns._ID),
-                                                    "${MediaStore.MediaColumns.DATA} = ?",
-                                                    arrayOf(file.absolutePath), null
-                                                )?.use { cursor ->
-                                                    if (cursor.moveToFirst()) {
-                                                        val id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID))
-                                                        ContentUris.withAppendedId(contentUri, id)
-                                                    } else null
-                                                }
-                                            } catch (_: Exception) { null }
-                                        }
-                                        val launchIntent: (Uri) -> Unit = { targetUri ->
-                                            val targetIntent = Intent(Intent.ACTION_VIEW).apply {
-                                                setDataAndType(targetUri, exactMime)
-                                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                                addFlags(Intent.FLAG_GRANT_PREFIX_URI_PERMISSION)
-                                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                            }
-                                            val resInfoList = context.packageManager.queryIntentActivities(targetIntent, PackageManager.MATCH_DEFAULT_ONLY)
-                                            for (resolveInfo in resInfoList) {
-                                                try { context.grantUriPermission(resolveInfo.activityInfo.packageName, targetUri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) {}
-                                            }
-                                            try {
-                                                context.startActivity(Intent.createChooser(targetIntent, "Buka Berkas Dengan").apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
-                                            } catch (_: Exception) {
-                                                Toast.makeText(context, "Tidak ada aplikasi penampil media yang cocok.", Toast.LENGTH_SHORT).show()
-                                            }
-                                        }
-                                        val existingUri = getMediaStoreUri()
-                                        if (existingUri != null) {
-                                            launchIntent(existingUri)
-                                        } else {
-                                            android.media.MediaScannerConnection.scanFile(
-                                                context.applicationContext, arrayOf(file.absolutePath), arrayOf(exactMime)
-                                            ) { _, scannedUri ->
-                                                val uriToUse = scannedUri ?: getMediaStoreUri() ?: fileProviderUri
-                                                android.os.Handler(android.os.Looper.getMainLooper()).post { launchIntent(uriToUse) }
-                                            }
-                                        }
-                                    } else {
-                                        Toast.makeText(context, "Berkas tidak ditemukan: ${file.name}", Toast.LENGTH_SHORT).show()
-                                    }
-                                } catch (e: Exception) {
-                                    Toast.makeText(context, "Gagal membuka media: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
-                                }
-                            },
-                            onShare = {
-                                try {
-                                    val file = File(item.path)
-                                    if (file.exists()) {
-                                        val exactMime = when {
-                                            file.name.endsWith(".mp4", ignoreCase = true) -> "video/mp4"
-                                            file.name.endsWith(".jpg", ignoreCase = true) || file.name.endsWith(".jpeg", ignoreCase = true) -> "image/jpeg"
-                                            file.name.endsWith(".png", ignoreCase = true) -> "image/png"
-                                            file.name.endsWith(".webp", ignoreCase = true) -> "image/webp"
-                                            file.name.endsWith(".m4a", ignoreCase = true) || file.name.endsWith(".aac", ignoreCase = true) -> "audio/aac"
-                                            else -> "video/mp4"
-                                        }
-                                        val fileProviderUri = try {
-                                            FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-                                        } catch (_: Exception) { Uri.fromFile(file) }
-                                        val launchShare: (Uri) -> Unit = { targetUri ->
-                                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                                type = exactMime
-                                                putExtra(Intent.EXTRA_STREAM, targetUri)
-                                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                            }
-                                            val resInfoList = context.packageManager.queryIntentActivities(shareIntent, PackageManager.MATCH_DEFAULT_ONLY)
-                                            for (ri in resInfoList) {
-                                                try { context.grantUriPermission(ri.activityInfo.packageName, targetUri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) {}
-                                            }
-                                            context.startActivity(Intent.createChooser(shareIntent, "Bagikan Berkas").apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
-                                        }
-                                        android.media.MediaScannerConnection.scanFile(
-                                            context.applicationContext, arrayOf(file.absolutePath), arrayOf(exactMime)
-                                        ) { _, scannedUri -> launchShare(scannedUri ?: fileProviderUri) }
-                                    } else {
-                                        Toast.makeText(context, "Berkas tidak ditemukan: ${item.path}", Toast.LENGTH_SHORT).show()
-                                    }
-                                } catch (e: Exception) {
-                                    Toast.makeText(context, "Gagal membagikan media: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
-                                }
-                            }
+            // LAYER 2 (LAYER ATAS): Loading Indicator Dihitung TEPAT di Tengah Area Kosong (Stretch Gap)
+            if (animatedContentOffsetDp > 2.dp || uiState.isRefreshing) {
+                // Formula Posisi Tengah Geometris Presisi
+                val indicatorY = topBarHeightDp + ((animatedContentOffsetDp - indicatorSizeDp) / 2)
+
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .offset(y = indicatorY)
+                        .graphicsLayer {
+                            val fraction = pullToRefreshState.distanceFraction
+                            alpha = if (uiState.isRefreshing) 1f else fraction.coerceIn(0f, 1f)
+                            val scale = if (uiState.isRefreshing) 1f else fraction.coerceIn(0.4f, 1f)
+                            scaleX = scale
+                            scaleY = scale
+                        }
+                ) {
+                    if (uiState.isRefreshing) {
+                        ContainedLoadingIndicator(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            indicatorColor = MaterialTheme.colorScheme.primary
+                        )
+                    } else {
+                        ContainedLoadingIndicator(
+                            progress = { pullToRefreshState.distanceFraction },
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            indicatorColor = MaterialTheme.colorScheme.primary
                         )
                     }
                 }
             }
-        }
 
-        // 2. Native Material Dimmed Backdrop Scrim Overlay (Below FAB overlay, above content)
-        AnimatedVisibility(
-            visible = isFabMenuExpanded,
-            enter = fadeIn(tween(200)),
-            exit = fadeOut(tween(150))
-        ) {
+            // LAYER 3: Scrim Backdrop Overlay
+            AnimatedVisibility(
+                visible = isFabMenuExpanded,
+                enter = fadeIn(tween(200)),
+                exit = fadeOut(tween(150))
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.35f))
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) { isFabMenuExpanded = false }
+            )
+            }
+
+            // LAYER 4: Floating Action Button Menu
+            val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+            val fabBottomPadding = if (navBarBottom > 0.dp) navBarBottom + 20.dp else 36.dp
+
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.35f))
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null
-                    ) { isFabMenuExpanded = false }
-            )
-        }
-
-        // 3. Official Material Design 3 Expressive FAB Menu Implementation
-        val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-        val fabBottomPadding = if (navBarBottom > 0.dp) navBarBottom + 20.dp else 36.dp
-
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(bottom = fabBottomPadding, end = 16.dp),
-            contentAlignment = Alignment.BottomEnd
-        ) {
-            Column(
-                horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                    .padding(bottom = fabBottomPadding, end = 16.dp),
+                contentAlignment = Alignment.BottomEnd
             ) {
-                AnimatedVisibility(
-                    visible = isFabMenuExpanded,
-                    enter = fadeIn(tween(180)) + slideInVertically(initialOffsetY = { it / 2 }, animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioMediumBouncy)) + scaleIn(initialScale = 0.75f),
-                    exit = fadeOut(tween(120)) + slideOutVertically(targetOffsetY = { it / 2 }) + scaleOut(targetScale = 0.75f)
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    Column(
-                        horizontalAlignment = Alignment.End,
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    AnimatedVisibility(
+                        visible = isFabMenuExpanded,
+                        enter = fadeIn(tween(180)) + slideInVertically(initialOffsetY = { it / 2 }, animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioMediumBouncy)) + scaleIn(initialScale = 0.75f),
+                        exit = fadeOut(tween(120)) + slideOutVertically(targetOffsetY = { it / 2 }) + scaleOut(targetScale = 0.75f)
                     ) {
-                        // 1. Video Item (Native Photo/Video Picker API Video Only)
-                        M3ExpressiveFabMenuItem(
-                            onClick = {
-                                isFabMenuExpanded = false
-                                videoPickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
-                            },
-                            icon = { Icon(Icons.Default.Movie, contentDescription = null, modifier = Modifier.size(24.dp)) },
-                            label = "Video"
-                        )
-
-                        // 2. Gambar Item (Native Photo/Video Picker API Image Only)
-                        M3ExpressiveFabMenuItem(
-                            onClick = {
-                                isFabMenuExpanded = false
-                                imagePickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                            },
-                            icon = { Icon(Icons.Default.Image, contentDescription = null, modifier = Modifier.size(24.dp)) },
-                            label = "Gambar"
-                        )
-
-                        // 3. Audio Item (Native Audio Picker)
-                        M3ExpressiveFabMenuItem(
-                            onClick = {
-                                isFabMenuExpanded = false
-                                audioPickerLauncher.launch("audio/*")
-                            },
-                            icon = { Icon(Icons.Default.Audiotrack, contentDescription = null, modifier = Modifier.size(24.dp)) },
-                            label = "Audio"
-                        )
-                    }
-                }
-
-                // Official Medium Primary Extended FloatingActionButton with Auto-Shrink on Scroll
-                ExtendedFloatingActionButton(
-                    text = {
-                        AnimatedContent(
-                            targetState = isFabMenuExpanded,
-                            transitionSpec = {
-                                (fadeIn(tween(200)) + slideInVertically(tween(200)) { it / 4 }).togetherWith(
-                                    fadeOut(tween(150)) + slideOutVertically(tween(150)) { -it / 4 }
-                                )
-                            },
-                            label = "fab_text"
-                        ) { expanded ->
-                            Text(
-                                text = if (expanded) "Tutup" else "Input File",
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                        Column(
+                            horizontalAlignment = Alignment.End,
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            M3ExpressiveFabMenuItem(
+                                onClick = {
+                                    isFabMenuExpanded = false
+                                    videoPickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
+                                },
+                                icon = { Icon(Icons.Default.Movie, contentDescription = null, modifier = Modifier.size(24.dp)) },
+                                label = "Video"
+                            )
+                            M3ExpressiveFabMenuItem(
+                                onClick = {
+                                    isFabMenuExpanded = false
+                                    imagePickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                                },
+                                icon = { Icon(Icons.Default.Image, contentDescription = null, modifier = Modifier.size(24.dp)) },
+                                label = "Gambar"
+                            )
+                            M3ExpressiveFabMenuItem(
+                                onClick = {
+                                    isFabMenuExpanded = false
+                                    audioPickerLauncher.launch("audio/*")
+                                },
+                                icon = { Icon(Icons.Default.Audiotrack, contentDescription = null, modifier = Modifier.size(24.dp)) },
+                                label = "Audio"
                             )
                         }
-                    },
-                    icon = {
-                        AnimatedContent(
-                            targetState = isFabMenuExpanded,
-                            transitionSpec = {
-                                (fadeIn(tween(200)) + scaleIn(initialScale = 0.8f, animationSpec = tween(200))).togetherWith(
-                                    fadeOut(tween(150)) + scaleOut(targetScale = 0.8f, animationSpec = tween(150))
+                    }
+
+                    ExtendedFloatingActionButton(
+                        text = {
+                            AnimatedContent(
+                                targetState = isFabMenuExpanded,
+                                transitionSpec = {
+                                    (fadeIn(tween(200)) + slideInVertically(tween(200)) { it / 4 }).togetherWith(
+                                        fadeOut(tween(150)) + slideOutVertically(tween(150)) { -it / 4 }
+                                    )
+                                },
+                                label = "fab_text"
+                            ) { expanded ->
+                                Text(
+                                    text = if (expanded) "Tutup" else "Input File",
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                                 )
-                            },
-                            label = "fab_icon"
-                        ) { expanded ->
-                            Icon(
-                                imageVector = if (expanded) Icons.Default.Close else Icons.Default.Add,
-                                contentDescription = null,
-                                modifier = Modifier.size(24.dp)
-                            )
-                        }
-                    },
-                    onClick = { isFabMenuExpanded = !isFabMenuExpanded },
-                    expanded = isFabMenuExpanded || isScrollAtTop,
-                    containerColor = if (isFabMenuExpanded) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary,
-                    contentColor = if (isFabMenuExpanded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onPrimary,
-                    shape = RoundedCornerShape(20.dp),
-                    elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp)
-                )
-            }
-        }
-
-        // Generic Confirmation Dialog (For Delete File, Remove from Queue, or Stop Active Encoding)
-        val activeConfirmAction = uiState.pendingConfirmAction ?: run {
-            uiState.pendingDeleteItem?.let { item ->
-                PendingConfirmAction(PendingActionType.DELETE_FILE, item)
-            } ?: if (uiState.showCancelEncodingDialog) {
-                val activeItem = uiState.encodedHistory.firstOrNull { it.isEncodingActive }
-                    ?: uiState.encodedHistory.firstOrNull { it.isQueued }
-                activeItem?.let { PendingConfirmAction(if (it.isEncodingActive) PendingActionType.STOP_ENCODING else PendingActionType.REMOVE_FROM_QUEUE, it) }
-            } else null
-        }
-
-        activeConfirmAction?.let { action ->
-            val title = when (action.type) {
-                PendingActionType.DELETE_FILE -> "Hapus File?"
-                PendingActionType.REMOVE_FROM_QUEUE -> "Hapus dari Antrean?"
-                PendingActionType.STOP_ENCODING -> "Hentikan Encoding?"
-            }
-            val message = when (action.type) {
-                PendingActionType.DELETE_FILE -> "Yakin ingin menghapus berkas \"${action.item.name}\"? Berkas di penyimpanan HP juga akan dihapus."
-                PendingActionType.REMOVE_FROM_QUEUE -> "Yakin ingin menghapus berkas \"${action.item.name}\" dari antrean encoding?"
-                PendingActionType.STOP_ENCODING -> "Yakin ingin menghentikan proses encoding untuk berkas \"${action.item.name}\"? Berkas output yang belum selesai akan dibersihkan."
-            }
-            val confirmText = when (action.type) {
-                PendingActionType.DELETE_FILE -> "Hapus File"
-                PendingActionType.REMOVE_FROM_QUEUE -> "Hapus Antrean"
-                PendingActionType.STOP_ENCODING -> "Ya, Hentikan"
-            }
-
-            AlertDialog(
-                onDismissRequest = { viewModel.dismissConfirmDialog() },
-                title = {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                            }
+                        },
+                        icon = {
+                            AnimatedContent(
+                                targetState = isFabMenuExpanded,
+                                transitionSpec = {
+                                    (fadeIn(tween(200)) + scaleIn(initialScale = 0.8f, animationSpec = tween(200))).togetherWith(
+                                        fadeOut(tween(150)) + scaleOut(targetScale = 0.8f, animationSpec = tween(150))
+                                    )
+                                },
+                                label = "fab_icon"
+                            ) { expanded ->
+                                Icon(
+                                    imageVector = if (expanded) Icons.Default.Close else Icons.Default.Add,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        },
+                        onClick = { isFabMenuExpanded = !isFabMenuExpanded },
+                        expanded = isFabMenuExpanded || isScrollAtTop,
+                        containerColor = if (isFabMenuExpanded) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary,
+                        contentColor = if (isFabMenuExpanded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onPrimary,
+                        shape = RoundedCornerShape(20.dp),
+                        elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp)
                     )
-                },
-                text = {
-                    Text(
-                        text = message,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                },
-                confirmButton = {
-                    Button(
-                        onClick = { viewModel.confirmPendingAction() },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.error
-                        )
-                    ) {
-                        Text(confirmText)
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { viewModel.dismissConfirmDialog() }) {
-                        Text("Batal")
-                    }
                 }
-            )
+            }
         }
     }
 }

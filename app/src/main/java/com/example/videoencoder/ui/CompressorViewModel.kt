@@ -203,7 +203,10 @@ data class CompressorUiState(
     val pendingConfirmAction: PendingConfirmAction? = null,
     val pendingDeleteItem: EncodedFileItem? = null,
     val showCancelEncodingDialog: Boolean = false,
-    val pendingRemovalPaths: Set<String> = emptySet()
+    val pendingRemovalPaths: Set<String> = emptySet(),
+
+    // Refresh State
+    val isRefreshing: Boolean = false
 )
 
 class CompressorViewModel(application: Application) : AndroidViewModel(application) {
@@ -398,6 +401,7 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
 
         checkMediaPerformanceClass()
         discoverHardwareEncoders()
+        cleanStaleMediaStoreEntries() // auto-clean ghost thumbnails on startup
         refreshEncodedHistory()
     }
 
@@ -505,78 +509,156 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
         return if (mediaEncoderFolder.exists()) mediaEncoderFolder else rootPublic
     }
 
-    fun refreshEncodedHistory() {
+    /**
+     * Scans MediaStore for ALL entries that reference files no longer on disk.
+     * Deletes those stale entries so gallery apps (Google Photos, etc.) remove
+     * ghost thumbnails. Runs on IO thread — safe to call at startup.
+     */
+    fun cleanStaleMediaStoreEntries() {
         viewModelScope.launch(Dispatchers.IO) {
             val context = getApplication<Application>().applicationContext
-            val directoriesToScan = mutableListOf<File>()
-            
-            val primaryOutputFolder = getAppOutputDirectory()
-            if (primaryOutputFolder.exists()) {
-                directoriesToScan.add(primaryOutputFolder)
-            }
+            var cleaned = 0
 
-            val externalPublicMovies = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
-            if (externalPublicMovies != null) {
-                val mediaEncoderMoviesFolder = File(externalPublicMovies, "Media Encoder")
-                if (mediaEncoderMoviesFolder.exists()) directoriesToScan.add(mediaEncoderMoviesFolder)
-                if (externalPublicMovies.exists()) directoriesToScan.add(externalPublicMovies)
-            }
+            val contentUris = listOf(
+                MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+            )
 
-            val externalPublicPictures = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
-            if (externalPublicPictures != null) {
-                val mediaEncoderPicturesFolder = File(externalPublicPictures, "Media Encoder")
-                if (mediaEncoderPicturesFolder.exists()) directoriesToScan.add(mediaEncoderPicturesFolder)
-            }
+            // Output paths to check — same directories scanned by refreshEncodedHistory
+            val watchedPaths = setOf(
+                getAppOutputDirectory().absolutePath,
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
+                    ?.let { File(it, "Media Encoder").absolutePath },
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
+                    ?.let { File(it, "Media Encoder").absolutePath },
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC)
+                    ?.let { File(it, "Media Encoder").absolutePath },
+                context.getExternalFilesDir(Environment.DIRECTORY_MOVIES)?.absolutePath,
+                context.filesDir.absolutePath
+            ).filterNotNull().toSet()
 
-            val externalPublicMusic = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC)
-            if (externalPublicMusic != null) {
-                val mediaEncoderMusicFolder = File(externalPublicMusic, "Media Encoder")
-                if (mediaEncoderMusicFolder.exists()) directoriesToScan.add(mediaEncoderMusicFolder)
-            }
-
-            context.getExternalFilesDir(Environment.DIRECTORY_MOVIES)?.let {
-                if (it.exists()) directoriesToScan.add(it)
-            }
-
-            directoriesToScan.add(context.filesDir)
-
-            val fileMap = mutableMapOf<String, EncodedFileItem>()
-            directoriesToScan.forEach { dir ->
-                dir.listFiles()
-                    ?.filter { file ->
-                        file.isFile && (
-                            file.name.endsWith(".mp4") || file.name.endsWith(".mkv") || file.name.endsWith(".webm") || file.name.endsWith(".avi") || file.name.endsWith(".wmv") ||
-                            file.name.endsWith(".jpg") || file.name.endsWith(".jpeg") || file.name.endsWith(".png") || file.name.endsWith(".webp") ||
-                            file.name.endsWith(".m4a") || file.name.endsWith(".aac") || file.name.endsWith(".opus") || file.name.endsWith(".mp3")
-                        )
-                    }
-                    ?.forEach { file ->
-                        val mediaType = when {
-                            file.name.endsWith(".jpg") || file.name.endsWith(".jpeg") || file.name.endsWith(".png") || file.name.endsWith(".webp") -> MediaType.IMAGE
-                            file.name.endsWith(".m4a") || file.name.endsWith(".aac") || file.name.endsWith(".opus") || file.name.endsWith(".mp3") -> MediaType.AUDIO
-                            else -> MediaType.VIDEO
+            for (contentUri in contentUris) {
+                try {
+                    val projection = arrayOf(
+                        MediaStore.MediaColumns._ID,
+                        MediaStore.MediaColumns.DATA
+                    )
+                    context.contentResolver.query(
+                        contentUri, projection, null, null, null
+                    )?.use { cursor ->
+                        val idCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+                        val dataCol = cursor.getColumnIndex(MediaStore.MediaColumns.DATA)
+                        while (cursor.moveToNext()) {
+                            val filePath = if (dataCol >= 0) cursor.getString(dataCol) else null
+                                ?: continue
+                            // Only clean entries in directories we own
+                            val parentPath = File(filePath).parent ?: continue
+                            if (watchedPaths.none { filePath.startsWith(it) }) continue
+                            // If file no longer exists → delete MediaStore entry
+                            if (!File(filePath).exists()) {
+                                val id = cursor.getLong(idCol)
+                                val deleteUri = android.content.ContentUris.withAppendedId(contentUri, id)
+                                try {
+                                    context.contentResolver.delete(deleteUri, null, null)
+                                    cleaned++
+                                } catch (_: Exception) {}
+                            }
                         }
-                        fileMap[file.absolutePath] = EncodedFileItem(
-                            name = file.name,
-                            path = file.absolutePath,
-                            sizeBytes = file.length(),
-                            lastModifiedMs = file.lastModified(),
-                            mediaType = mediaType,
-                            isEncodingActive = false,
-                            progressPercent = 100,
-                            statusText = "Selesai"
-                        )
                     }
+                } catch (_: Exception) {}
             }
 
-            val sortedFiles = fileMap.values.sortedByDescending { it.lastModifiedMs }
-            _uiState.update { current ->
-                val activeOrQueuedItems = current.encodedHistory.filter {
-                    it.isEncodingActive || it.isQueued || it.queueStatus == QueueStatus.QUEUED || it.queueStatus == QueueStatus.ENCODING
+            if (cleaned > 0) {
+                addLog("Dibersihkan $cleaned entri media usang dari MediaStore.", LogLevel.INFO, "STORAGE")
+                // Notify gallery apps to refresh
+                try {
+                    context.contentResolver.notifyChange(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, null)
+                    context.contentResolver.notifyChange(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, null)
+                    context.contentResolver.notifyChange(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, null)
+                } catch (_: Exception) {}
+            }
+        }
+    }
+
+    fun refreshEncodedHistory() {
+        viewModelScope.launch(Dispatchers.IO) {
+            _uiState.update { it.copy(isRefreshing = true) }
+            try {
+                val context = getApplication<Application>().applicationContext
+                val directoriesToScan = mutableListOf<File>()
+                
+                val primaryOutputFolder = getAppOutputDirectory()
+                if (primaryOutputFolder.exists()) {
+                    directoriesToScan.add(primaryOutputFolder)
                 }
-                val activeOrQueuedPaths = activeOrQueuedItems.map { it.path }.toSet()
-                val mergedList = activeOrQueuedItems + sortedFiles.filter { it.path !in activeOrQueuedPaths }
-                current.copy(encodedHistory = mergedList)
+
+                val externalPublicMovies = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
+                if (externalPublicMovies != null) {
+                    val mediaEncoderMoviesFolder = File(externalPublicMovies, "Media Encoder")
+                    if (mediaEncoderMoviesFolder.exists()) directoriesToScan.add(mediaEncoderMoviesFolder)
+                    if (externalPublicMovies.exists()) directoriesToScan.add(externalPublicMovies)
+                }
+
+                val externalPublicPictures = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
+                if (externalPublicPictures != null) {
+                    val mediaEncoderPicturesFolder = File(externalPublicPictures, "Media Encoder")
+                    if (mediaEncoderPicturesFolder.exists()) directoriesToScan.add(mediaEncoderPicturesFolder)
+                }
+
+                val externalPublicMusic = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC)
+                if (externalPublicMusic != null) {
+                    val mediaEncoderMusicFolder = File(externalPublicMusic, "Media Encoder")
+                    if (mediaEncoderMusicFolder.exists()) directoriesToScan.add(mediaEncoderMusicFolder)
+                }
+
+                context.getExternalFilesDir(Environment.DIRECTORY_MOVIES)?.let {
+                    if (it.exists()) directoriesToScan.add(it)
+                }
+
+                directoriesToScan.add(context.filesDir)
+
+                val fileMap = mutableMapOf<String, EncodedFileItem>()
+                directoriesToScan.forEach { dir ->
+                    dir.listFiles()
+                        ?.filter { file ->
+                            file.isFile && (
+                                file.name.endsWith(".mp4") || file.name.endsWith(".mkv") || file.name.endsWith(".webm") || file.name.endsWith(".avi") || file.name.endsWith(".wmv") ||
+                                file.name.endsWith(".jpg") || file.name.endsWith(".jpeg") || file.name.endsWith(".png") || file.name.endsWith(".webp") ||
+                                file.name.endsWith(".m4a") || file.name.endsWith(".aac") || file.name.endsWith(".opus") || file.name.endsWith(".mp3")
+                            )
+                        }
+                        ?.forEach { file ->
+                            val mediaType = when {
+                                file.name.endsWith(".jpg") || file.name.endsWith(".jpeg") || file.name.endsWith(".png") || file.name.endsWith(".webp") -> MediaType.IMAGE
+                                file.name.endsWith(".m4a") || file.name.endsWith(".aac") || file.name.endsWith(".opus") || file.name.endsWith(".mp3") -> MediaType.AUDIO
+                                else -> MediaType.VIDEO
+                            }
+                            fileMap[file.absolutePath] = EncodedFileItem(
+                                name = file.name,
+                                path = file.absolutePath,
+                                sizeBytes = file.length(),
+                                lastModifiedMs = file.lastModified(),
+                                mediaType = mediaType,
+                                isEncodingActive = false,
+                                progressPercent = 100,
+                                statusText = "Selesai"
+                            )
+                        }
+                }
+
+                val sortedFiles = fileMap.values.sortedByDescending { it.lastModifiedMs }
+                kotlinx.coroutines.delay(1000)
+                _uiState.update { current ->
+                    val activeOrQueuedItems = current.encodedHistory.filter {
+                        it.isEncodingActive || it.isQueued || it.queueStatus == QueueStatus.QUEUED || it.queueStatus == QueueStatus.ENCODING
+                    }
+                    val activeOrQueuedPaths = activeOrQueuedItems.map { it.path }.toSet()
+                    val mergedList = activeOrQueuedItems + sortedFiles.filter { it.path !in activeOrQueuedPaths }
+                    current.copy(encodedHistory = mergedList, isRefreshing = false)
+                }
+            } catch (_: Exception) {
+                _uiState.update { it.copy(isRefreshing = false) }
             }
         }
     }
