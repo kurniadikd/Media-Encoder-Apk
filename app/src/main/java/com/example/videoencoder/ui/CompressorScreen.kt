@@ -93,6 +93,7 @@ import androidx.compose.material3.CardColors
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
@@ -310,6 +311,65 @@ fun M3ExpressiveIconButton(
         colors = colors,
         interactionSource = interactionSource,
         content = content
+    )
+}
+
+/**
+ * Expressive Dropdown Menu sesuai pedoman Material M3 Expressive Reference
+ */
+@Composable
+fun M3ExpressiveDropdownMenu(
+    expanded: Boolean,
+    onDismissRequest: () -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    DropdownMenu(
+        expanded = expanded,
+        onDismissRequest = onDismissRequest,
+        modifier = modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+        shape = RoundedCornerShape(24.dp), // Corner melengkung khas M3 Expressive
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shadowElevation = 6.dp,
+        content = content
+    )
+}
+
+/**
+ * Expressive Dropdown Menu Item dengan gaya Pill Shape & Highlight
+ */
+@Composable
+fun M3ExpressiveDropdownMenuItem(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    isSelected: Boolean = false,
+    textColor: Color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+    selectedContainerColor: Color = MaterialTheme.colorScheme.primaryContainer,
+    icon: (@Composable () -> Unit)? = null
+) {
+    val itemShape = RoundedCornerShape(16.dp)
+    val backgroundColor = if (isSelected) selectedContainerColor else Color.Transparent
+
+    DropdownMenuItem(
+        text = {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelLarge.copy(
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                    color = textColor
+                )
+            )
+        },
+        leadingIcon = icon,
+        onClick = onClick,
+        colors = MenuDefaults.itemColors(
+            textColor = textColor,
+            leadingIconColor = textColor
+        ),
+        modifier = modifier
+            .padding(horizontal = 6.dp, vertical = 2.dp) // Margin antar item dalam popup
+            .background(color = backgroundColor, shape = itemShape)
     )
 }
 
@@ -2181,23 +2241,38 @@ fun UnifiedMediaCardItem(
                                 Icon(Icons.Default.MoreVert, contentDescription = "Opsi Lainnya")
                             }
 
-                            DropdownMenu(
+                            M3ExpressiveDropdownMenu(
                                 expanded = menuExpanded,
                                 onDismissRequest = { menuExpanded = false }
                             ) {
                                 if (item.queueStatus == QueueStatus.COMPLETED) {
-                                    DropdownMenuItem(
-                                        text = { Text("Bagikan") },
-                                        leadingIcon = { Icon(Icons.Default.Share, contentDescription = null) },
+                                    M3ExpressiveDropdownMenuItem(
+                                        text = "Bagikan",
+                                        icon = {
+                                            Icon(
+                                                imageVector = Icons.Default.Share,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        },
                                         onClick = {
                                             menuExpanded = false
                                             onShare()
                                         }
                                     )
                                 }
-                                DropdownMenuItem(
-                                    text = { Text("Hapus") },
-                                    leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+
+                                M3ExpressiveDropdownMenuItem(
+                                    text = "Hapus",
+                                    textColor = MaterialTheme.colorScheme.error,
+                                    icon = {
+                                        Icon(
+                                            imageVector = Icons.Default.Delete,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.error,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    },
                                     onClick = {
                                         menuExpanded = false
                                         onDelete()
