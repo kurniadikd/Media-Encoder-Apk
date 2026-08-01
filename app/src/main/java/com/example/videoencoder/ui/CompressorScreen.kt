@@ -1131,6 +1131,86 @@ fun MainScreenView(
             }
         }
     }
+
+    // Modal Dialog Konfirmasi Tindakan (Hentikan Encoding / Hapus Antrean / Hapus File)
+    val pendingAction = uiState.pendingConfirmAction
+    if (pendingAction != null) {
+        data class ConfirmDialogData(
+            val title: String,
+            val text: String,
+            val confirmText: String,
+            val icon: androidx.compose.ui.graphics.vector.ImageVector
+        )
+
+        val dialogData = when (pendingAction.type) {
+            PendingActionType.STOP_ENCODING -> ConfirmDialogData(
+                "Hentikan Pengodean?",
+                "Proses pengodean untuk file \"${pendingAction.item.name}\" sedang berlangsung. Apakah Anda yakin ingin menghentikannya?",
+                "Hentikan",
+                Icons.Default.Stop
+            )
+            PendingActionType.REMOVE_FROM_QUEUE -> ConfirmDialogData(
+                "Hapus dari Antrean?",
+                "Apakah Anda yakin ingin menghapus file \"${pendingAction.item.name}\" dari antrean pengodean?",
+                "Hapus Antrean",
+                Icons.Default.Close
+            )
+            PendingActionType.DELETE_FILE -> ConfirmDialogData(
+                "Hapus File Media?",
+                "File \"${pendingAction.item.name}\" akan dihapus secara permanen dari penyimpanan perangkat Anda.",
+                "Hapus Permanent",
+                Icons.Default.Delete
+            )
+        }
+
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissConfirmDialog() },
+            icon = { Icon(dialogData.icon, contentDescription = null, tint = if (pendingAction.type == PendingActionType.STOP_ENCODING || pendingAction.type == PendingActionType.DELETE_FILE) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary) },
+            title = { Text(text = dialogData.title, style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)) },
+            text = { Text(text = dialogData.text, style = MaterialTheme.typography.bodyMedium) },
+            confirmButton = {
+                M3ExpressiveButton(
+                    onClick = { viewModel.confirmPendingAction() },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (pendingAction.type == PendingActionType.STOP_ENCODING || pendingAction.type == PendingActionType.DELETE_FILE) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                    )
+                ) {
+                    Text(dialogData.confirmText, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                M3ExpressiveFilledTonalButton(
+                    onClick = { viewModel.dismissConfirmDialog() }
+                ) {
+                    Text("Batal")
+                }
+            },
+            shape = RoundedCornerShape(28.dp)
+        )
+    } else if (uiState.showCancelEncodingDialog) {
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissCancelDialog() },
+            icon = { Icon(Icons.Default.Stop, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+            title = { Text("Hentikan Pengodean?", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)) },
+            text = { Text("Apakah Anda yakin ingin menghentikan proses pengodean media yang sedang berlangsung?") },
+            confirmButton = {
+                M3ExpressiveButton(
+                    onClick = { viewModel.confirmCancelCompression() },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Hentikan", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                M3ExpressiveFilledTonalButton(
+                    onClick = { viewModel.dismissCancelDialog() }
+                ) {
+                    Text("Batal")
+                }
+            },
+            shape = RoundedCornerShape(28.dp)
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
