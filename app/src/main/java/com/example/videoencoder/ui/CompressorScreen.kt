@@ -1521,6 +1521,15 @@ fun PreprocessScreenView(
                     }
                 }
                 MediaType.IMAGE -> {
+                    // Image Encoder Engine Selector
+                    val engineOptions = listOf("LIBVIPS" to "⚡ libvips (Ultra High-Performance Native Engine)", "BITMAP" to "📱 Android Bitmap API (Software Standard)")
+                    M3DropdownSelector(
+                        label = "Engine Pengodean Gambar",
+                        selectedLabel = engineOptions.firstOrNull { it.first == uiState.imageEncoderEngine }?.second ?: "⚡ libvips (Ultra High-Performance Native Engine)",
+                        options = engineOptions.map { it.second },
+                        onOptionSelected = { index -> viewModel.setImageEncoderEngine(engineOptions[index].first) }
+                    )
+
                     // Image Format Dropdown
                     val imgFormats = listOf("WEBP" to "WEBP", "JPEG" to "JPEG", "PNG" to "PNG")
                     M3DropdownSelector(

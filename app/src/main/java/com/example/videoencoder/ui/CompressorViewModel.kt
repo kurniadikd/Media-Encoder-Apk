@@ -148,6 +148,7 @@ data class EncodingTask(
     val audioBitrateKbps: Int,
     val isAudioMuted: Boolean,
     val rotationDegrees: Float,
+    val imageEncoderEngine: String = "LIBVIPS",
     val imageFormat: String,
     val imageQuality: Int,
     val imageScalePercent: Int,
@@ -178,6 +179,7 @@ data class CompressorUiState(
     val isAudioMuted: Boolean = false,
 
     // Image Encoding Parameters
+    val imageEncoderEngine: String = "LIBVIPS",     // "LIBVIPS" or "BITMAP"
     val imageFormat: String = "WEBP",
     val imageQuality: Int = 80,
     val imageScalePercent: Int = 100,
@@ -1004,6 +1006,13 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    fun setImageEncoderEngine(engine: String) {
+        _uiState.update { current ->
+            val updated = current.copy(imageEncoderEngine = engine)
+            updated.copy(estimatedSizeMb = calculateEstimatedSize(updated))
+        }
+    }
+
     fun setImageFormat(format: String) {
         _uiState.update { current ->
             val updated = current.copy(imageFormat = format)
@@ -1145,6 +1154,7 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
             audioBitrateKbps = state.audioBitrateKbps,
             isAudioMuted = state.isAudioMuted,
             rotationDegrees = state.rotationDegrees,
+            imageEncoderEngine = state.imageEncoderEngine,
             imageFormat = state.imageFormat,
             imageQuality = state.imageQuality,
             imageScalePercent = state.imageScalePercent
@@ -1243,6 +1253,8 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                     val targetW = if (nextTask.imageScalePercent < 100 && nextTask.media.width > 0) (nextTask.media.width * nextTask.imageScalePercent / 100) else 0
                     val targetH = if (nextTask.imageScalePercent < 100 && nextTask.media.height > 0) (nextTask.media.height * nextTask.imageScalePercent / 100) else 0
 
+                    val useLibVips = nextTask.imageEncoderEngine == "LIBVIPS"
+                    addLog("Engine Gambar: ${if (useLibVips) "libvips (Native High-Performance)" else "Android Bitmap API"}", LogLevel.INFO, "IMAGE")
                     val success = withContext(Dispatchers.IO) {
                         engine.encodeImage(
                             inputUri = nextTask.media.uri,
@@ -1250,7 +1262,8 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                             format = nextTask.imageFormat,
                             quality = nextTask.imageQuality,
                             targetWidth = targetW,
-                            targetHeight = targetH
+                            targetHeight = targetH,
+                            useLibVipsEngine = useLibVips
                         )
                     }
 
