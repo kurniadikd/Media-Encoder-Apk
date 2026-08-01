@@ -1530,8 +1530,20 @@ fun PreprocessScreenView(
                         onOptionSelected = { index -> viewModel.setImageEncoderEngine(engineOptions[index].first) }
                     )
 
-                    // Image Format Dropdown
-                    val imgFormats = listOf("WEBP" to "WEBP", "JPEG" to "JPEG", "PNG" to "PNG")
+                    // Image Format Dropdown (supports libvips native codecs)
+                    val imgFormats = if (uiState.imageEncoderEngine == "LIBVIPS") {
+                        listOf(
+                            "WEBP" to "WEBP (WebP Format)",
+                            "JPEG" to "JPEG (JPG Format)",
+                            "PNG" to "PNG (Lossless/Indexed)",
+                            "AVIF" to "⚡ AVIF (AV1 Image)",
+                            "HEIC" to "⚡ HEIC (HEVC Image)",
+                            "JXL" to "⚡ JXL (JPEG XL)"
+                        )
+                    } else {
+                        listOf("WEBP" to "WEBP", "JPEG" to "JPEG", "PNG" to "PNG")
+                    }
+
                     M3DropdownSelector(
                         label = "Format Gambar Output",
                         selectedLabel = imgFormats.firstOrNull { it.first == uiState.imageFormat }?.second ?: "WEBP",

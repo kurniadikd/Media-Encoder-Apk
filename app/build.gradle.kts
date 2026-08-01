@@ -63,6 +63,12 @@ android {
             useLegacyPackaging = true
         }
     }
+    externalNativeBuild {
+        cmake {
+            path = file("CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
 
     lint {
         checkReleaseBuilds = false

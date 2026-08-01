@@ -125,16 +125,28 @@ class VideoEncodingEngine(private val context: Context) {
         return builder.build()
     }
 
+    object VipsJni {
+        external fun encodeVipsImage(
+            inputPath: String,
+            outputPath: String,
+            format: String,
+            quality: Int,
+            targetWidth: Int,
+            targetHeight: Int
+        ): Boolean
+    }
+
     companion object {
         private var isLibVipsLoaded = false
         init {
             try {
                 System.loadLibrary("vips")
+                System.loadLibrary("videoencoder_jni")
                 isLibVipsLoaded = true
-                android.util.Log.i("VideoEncodingEngine", "Native libvips.so successfully loaded into Android Runtime!")
+                android.util.Log.i("VideoEncodingEngine", "Native libvips.so + videoencoder_jni successfully loaded!")
             } catch (e: Throwable) {
                 isLibVipsLoaded = false
-                android.util.Log.w("VideoEncodingEngine", "libvips.so not loaded (falling back to Android Bitmap API): ${e.localizedMessage}")
+                android.util.Log.w("VideoEncodingEngine", "Native vips JNI not loaded (falling back to Android Bitmap API): ${e.localizedMessage}")
             }
         }
     }
@@ -151,9 +163,20 @@ class VideoEncodingEngine(private val context: Context) {
         targetHeight: Int,
         useLibVipsEngine: Boolean = true
     ): Boolean {
-        if (useLibVipsEngine && isLibVipsLoaded) {
-            android.util.Log.i("VideoEncodingEngine", "Encoding image '${outputFile.name}' using High-Performance libvips Engine...")
-            // libvips C-API / JNI processing pipeline
+        val inputPath = if (inputUri.scheme == "file") inputUri.path else null
+
+        if (useLibVipsEngine && isLibVipsLoaded && inputPath != null) {
+            android.util.Log.i("VideoEncodingEngine", "Encoding image '${outputFile.name}' via Native libvips Engine ($format, Q=$quality)...")
+            val success = VipsJni.encodeVipsImage(
+                inputPath = inputPath,
+                outputPath = outputFile.absolutePath,
+                format = format.uppercase(),
+                quality = quality,
+                targetWidth = targetWidth,
+                targetHeight = targetHeight
+            )
+            if (success) return true
+            android.util.Log.w("VideoEncodingEngine", "libvips encoding returned false, falling back to Android Bitmap API...")
         }
 
         return try {
