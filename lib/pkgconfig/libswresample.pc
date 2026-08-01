@@ -1,0 +1,14 @@
+prefix=/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace
+exec_prefix=${prefix}
+libdir=/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/lib
+includedir=/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/include
+
+Name: libswresample
+Description: FFmpeg audio resampling library
+Version: 6.3.102
+Requires: libavutil >= 60.26.102
+Requires.private: 
+Conflicts:
+Libs: -L${libdir}  -lswresample -lm -lsoxr -latomic
+Libs.private: 
+Cflags: -I${includedir}

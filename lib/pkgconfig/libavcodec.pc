@@ -1,0 +1,14 @@
+prefix=/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace
+exec_prefix=${prefix}
+libdir=/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/lib
+includedir=/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/include
+
+Name: libavcodec
+Description: FFmpeg codec library
+Version: 62.28.102
+Requires: libswresample >= 6.3.102, libavutil >= 60.26.102
+Requires.private: 
+Conflicts:
+Libs: -L${libdir}  -lavcodec -L/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/lib -lvpx -lm -lpthread -L/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/lib -lvpx -lm -lpthread -L/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/lib -lvpx -lm -lpthread -L/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/lib -lvpx -lm -lpthread -L/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/lib -lwebpmux -lm -lwebp -lm -lsharpyuv -lm -pthread -lm -latomic -L/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/lib -ldav1d -pthread -ldl -L/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/lib -lopencore-amrwb -L/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/lib -lzvbi -lm -lpthread -lm -lpng -lz -L/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/lib -laom -lm -L/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/lib -lfdk-aac -lm -L/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/lib -ljxl -lm -lhwy -lbrotlienc -lbrotlidec -lbrotlicommon -ljxl_cms -lm -L/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/lib -ljxl_threads -lm -L/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/lib -llc3 -lm -lmp3lame -lm -L/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/lib -lopencore-amrnb -L/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/lib -lopus -lm -L/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/lib -lSvtAv1Enc -lm -ltheoraenc -ltheoradec -logg -L/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/lib -lvorbis -lm -logg -L/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/lib -lvorbisenc -lvorbis -lm -logg -L/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/lib -lSvtVp9Enc -lm -lpthread -L/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/lib -lwebp -lm -lsharpyuv -lm -L/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/lib -lx264 -lpthread -lm -ldl -L/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/lib -lx265 -lm -lrt -ldl -L/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/lib -lxeve -lm -lxvidcore -L/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/lib -lSvtHevcEnc -lpthread -L/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/lib -lz
+Libs.private: 
+Cflags: -I${includedir}

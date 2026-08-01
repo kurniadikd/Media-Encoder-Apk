@@ -1,0 +1,14 @@
+prefix=/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace
+exec_prefix=${prefix}
+libdir=/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/lib
+includedir=/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/include
+
+Name: libavfilter
+Description: FFmpeg audio/video filtering library
+Version: 11.14.102
+Requires: libswscale >= 9.5.102, libavformat >= 62.12.102, libavcodec >= 62.28.102, libswresample >= 6.3.102, libavutil >= 60.26.102
+Requires.private: 
+Conflicts:
+Libs: -L${libdir}  -lavfilter -pthread -lm -latomic -L/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/lib -lz -L/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/lib -llilv-0 -ldl -lm -lsratom-0 -lm -lsord-0 -lm -lserd-0 -lm -lzix-0 -pthread -L/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/lib -lvmaf -pthread -lm -L/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/lib -lvidstab -lm -L/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/lib -lzmq -lpthread -lrt -L/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/lib -lzimg -lglslang -lMachineIndependent -lGenericCodeGen -lSPIRV -lSPIRV-Tools-opt -lSPIRV-Tools -lstdc++ -lm -pthread -lOpenCL -L/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/lib -lfreetype -lpng16 -lm -lz -lm -lz -lbrotlidec -lbrotlicommon
+Libs.private: 
+Cflags: -I${includedir}

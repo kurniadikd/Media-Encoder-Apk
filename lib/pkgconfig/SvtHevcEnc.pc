@@ -1,0 +1,9 @@
+prefix=/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace
+includedir=/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/include/svt-hevc
+libdir=/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/lib
+
+Name: SvtHevcEnc
+Description: SVT (Scalable Video Technology) for HEVC encoder library
+Version: 1.5.1
+Libs: -L${libdir} -lSvtHevcEnc -lpthread
+Cflags: -I${includedir}

@@ -1,0 +1,14 @@
+prefix=/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace
+exec_prefix=/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace
+libdir=/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/lib
+includedir=/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/include
+
+Name: FreeType 2
+URL: https://freetype.org
+Description: A free, high-quality, and portable font engine.
+Version: 26.6.20
+Requires: zlib, libpng, libbrotlidec
+Requires.private: 
+Libs: -L/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/lib -lfreetype 
+Libs.private: 
+Cflags: -I${includedir}/freetype2

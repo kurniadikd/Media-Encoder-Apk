@@ -1,0 +1,14 @@
+prefix=/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace
+exec_prefix=${prefix}
+libdir=/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/lib
+includedir=/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/include
+
+Name: libavutil
+Description: FFmpeg utility library
+Version: 60.26.102
+Requires: 
+Requires.private: 
+Conflicts:
+Libs: -L${libdir}  -lavutil -lm -L/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/lib -lz -lOpenCL -L/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/lib -lssl -lcrypto -lz -ldl -pthread -latomic -pthread
+Libs.private: 
+Cflags: -I${includedir}

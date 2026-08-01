@@ -1,0 +1,9 @@
+prefix=/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace
+includedir=${prefix}/include
+libdir=${prefix}/lib
+
+Name: liblc3
+Description: LC3 codec library
+Version: 1.1.3
+Libs: -L${libdir} -llc3 -lm
+Cflags: -I${includedir}

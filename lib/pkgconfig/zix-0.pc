@@ -1,0 +1,9 @@
+prefix=/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace
+includedir=${prefix}/include
+libdir=${prefix}/lib
+
+Name: Zix
+Description: Lightweight C library of portability wrappers and data structures
+Version: 0.8.2
+Libs: -L${libdir} -lzix-0 -pthread
+Cflags: -I${includedir}/zix-0 -pthread -DZIX_STATIC

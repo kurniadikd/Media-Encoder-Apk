@@ -1,0 +1,9 @@
+prefix=/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace
+includedir=/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/include/svt-vp9
+libdir=/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/lib
+
+Name: SvtVp9Enc
+Description: SVT (Scalable Video Technology) for VP9 encoder library
+Version: 0.3.1
+Libs: -L${libdir} -lSvtVp9Enc -lm -lpthread 
+Cflags: -I${includedir}

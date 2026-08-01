@@ -1,0 +1,16 @@
+# --- xeve.pc.in file ---
+prefix=/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace
+exec_prefix=/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/bin
+libdir=/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/lib
+includedir=/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/include/xeve
+
+Name: xeve
+Description: eXtra-fast Essential Video Encoder (XEVE) (MAIN profile)
+
+Version: 0.5.1
+
+Requires:
+Libs: -L${libdir} -lxeve
+Libs.private: -lm
+
+Cflags: -I${includedir}

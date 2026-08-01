@@ -1,0 +1,10 @@
+prefix=/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace
+includedir=${prefix}/include
+
+lv2dir=/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/lib/lv2
+plugindir=/home/runner/work/ffmpeg-build-script/ffmpeg-build-script/workspace/lib/lv2
+
+Name: LV2
+Description: Plugin standard for audio systems
+Version: 1.18.10
+Cflags: -I${includedir}
