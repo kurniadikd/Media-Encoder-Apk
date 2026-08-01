@@ -265,6 +265,9 @@ class EncodingService : Service() {
                     var simulatedProgress = 5.0f
                     while (true) {
                         delay(50)
+                        if (_progressState.value.status == EncodingStatus.COMPLETED || _progressState.value.status == EncodingStatus.ERROR) {
+                            break
+                        }
                         activeTransformer?.let { trans ->
                             val state = trans.getProgress(progressHolder)
                             val currentProgress = if (state == Transformer.PROGRESS_STATE_AVAILABLE) {
@@ -275,7 +278,7 @@ class EncodingService : Service() {
                                 }
                                 simulatedProgress.toInt()
                             }
-                            if (_progressState.value.progressPercent != currentProgress) {
+                            if (_progressState.value.status == EncodingStatus.RUNNING && _progressState.value.progressPercent != currentProgress) {
                                 _progressState.value = _progressState.value.copy(
                                     status = EncodingStatus.RUNNING,
                                     progressPercent = currentProgress,

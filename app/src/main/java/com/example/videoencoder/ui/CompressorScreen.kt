@@ -2075,7 +2075,7 @@ fun UnifiedMediaCardItem(
                 when (state) {
                     "ENCODING" -> {
                         M3ExpressiveFilledTonalIconButton(
-                            onClick = onDelete,
+                            onClick = onCancel,
                             colors = IconButtonDefaults.filledTonalIconButtonColors(
                                 containerColor = MaterialTheme.colorScheme.errorContainer,
                                 contentColor = MaterialTheme.colorScheme.onErrorContainer
