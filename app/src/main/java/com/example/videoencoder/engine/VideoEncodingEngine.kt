@@ -163,20 +163,38 @@ class VideoEncodingEngine(private val context: Context) {
         targetHeight: Int,
         useLibVipsEngine: Boolean = true
     ): Boolean {
-        val inputPath = if (inputUri.scheme == "file") inputUri.path else null
+        var tempInputFile: File? = null
+        val actualInputPath = if (inputUri.scheme == "file" && inputUri.path != null) {
+            inputUri.path
+        } else {
+            try {
+                val tempFile = File.createTempFile("vips_in_", ".tmp", context.cacheDir)
+                context.contentResolver.openInputStream(inputUri)?.use { input ->
+                    FileOutputStream(tempFile).use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                tempInputFile = tempFile
+                tempFile.absolutePath
+            } catch (e: Exception) {
+                null
+            }
+        }
 
-        if (useLibVipsEngine && isLibVipsLoaded && inputPath != null) {
+        if (useLibVipsEngine && isLibVipsLoaded && actualInputPath != null) {
             android.util.Log.i("VideoEncodingEngine", "Encoding image '${outputFile.name}' via Native libvips Engine ($format, Q=$quality)...")
             val success = VipsJni.encodeVipsImage(
-                inputPath = inputPath,
+                inputPath = actualInputPath,
                 outputPath = outputFile.absolutePath,
                 format = format.uppercase(),
                 quality = quality,
                 targetWidth = targetWidth,
                 targetHeight = targetHeight
             )
+            tempInputFile?.delete()
             if (success) return true
-            android.util.Log.w("VideoEncodingEngine", "libvips encoding returned false, falling back to Android Bitmap API...")
+            android.util.Log.e("VideoEncodingEngine", "libvips encoding returned false for format $format!")
+            return false
         }
 
         return try {
