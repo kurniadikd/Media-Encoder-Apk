@@ -627,15 +627,16 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                     dir.listFiles()
                         ?.filter { file ->
                             file.isFile && (
-                                file.name.endsWith(".mp4") || file.name.endsWith(".mkv") || file.name.endsWith(".webm") || file.name.endsWith(".avi") || file.name.endsWith(".wmv") ||
-                                file.name.endsWith(".jpg") || file.name.endsWith(".jpeg") || file.name.endsWith(".png") || file.name.endsWith(".webp") ||
-                                file.name.endsWith(".m4a") || file.name.endsWith(".aac") || file.name.endsWith(".opus") || file.name.endsWith(".mp3")
+                                file.name.endsWith(".mp4", ignoreCase = true) || file.name.endsWith(".mkv", ignoreCase = true) || file.name.endsWith(".webm", ignoreCase = true) || file.name.endsWith(".avi", ignoreCase = true) || file.name.endsWith(".wmv", ignoreCase = true) ||
+                                file.name.endsWith(".jpg", ignoreCase = true) || file.name.endsWith(".jpeg", ignoreCase = true) || file.name.endsWith(".png", ignoreCase = true) || file.name.endsWith(".webp", ignoreCase = true) ||
+                                file.name.endsWith(".avif", ignoreCase = true) || file.name.endsWith(".heic", ignoreCase = true) || file.name.endsWith(".heif", ignoreCase = true) || file.name.endsWith(".jxl", ignoreCase = true) ||
+                                file.name.endsWith(".m4a", ignoreCase = true) || file.name.endsWith(".aac", ignoreCase = true) || file.name.endsWith(".opus", ignoreCase = true) || file.name.endsWith(".mp3", ignoreCase = true)
                             )
                         }
                         ?.forEach { file ->
                             val mediaType = when {
-                                file.name.endsWith(".jpg") || file.name.endsWith(".jpeg") || file.name.endsWith(".png") || file.name.endsWith(".webp") -> MediaType.IMAGE
-                                file.name.endsWith(".m4a") || file.name.endsWith(".aac") || file.name.endsWith(".opus") || file.name.endsWith(".mp3") -> MediaType.AUDIO
+                                file.name.endsWith(".jpg", ignoreCase = true) || file.name.endsWith(".jpeg", ignoreCase = true) || file.name.endsWith(".png", ignoreCase = true) || file.name.endsWith(".webp", ignoreCase = true) || file.name.endsWith(".avif", ignoreCase = true) || file.name.endsWith(".heic", ignoreCase = true) || file.name.endsWith(".heif", ignoreCase = true) || file.name.endsWith(".jxl", ignoreCase = true) -> MediaType.IMAGE
+                                file.name.endsWith(".m4a", ignoreCase = true) || file.name.endsWith(".aac", ignoreCase = true) || file.name.endsWith(".opus", ignoreCase = true) || file.name.endsWith(".mp3", ignoreCase = true) -> MediaType.AUDIO
                                 else -> MediaType.VIDEO
                             }
                             fileMap[file.absolutePath] = EncodedFileItem(
@@ -1277,8 +1278,11 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                                 put(android.provider.MediaStore.MediaColumns.DATE_ADDED, System.currentTimeMillis() / 1000)
                                 put(android.provider.MediaStore.MediaColumns.DATE_MODIFIED, System.currentTimeMillis() / 1000)
                                 val mime = when {
-                                    nextTask.outputFile.name.endsWith(".webp") -> "image/webp"
-                                    nextTask.outputFile.name.endsWith(".png") -> "image/png"
+                                    nextTask.outputFile.name.endsWith(".webp", ignoreCase = true) -> "image/webp"
+                                    nextTask.outputFile.name.endsWith(".png", ignoreCase = true) -> "image/png"
+                                    nextTask.outputFile.name.endsWith(".avif", ignoreCase = true) -> "image/avif"
+                                    nextTask.outputFile.name.endsWith(".heic", ignoreCase = true) || nextTask.outputFile.name.endsWith(".heif", ignoreCase = true) -> "image/heif"
+                                    nextTask.outputFile.name.endsWith(".jxl", ignoreCase = true) -> "image/jxl"
                                     else -> "image/jpeg"
                                 }
                                 put(android.provider.MediaStore.MediaColumns.MIME_TYPE, mime)

@@ -937,6 +937,9 @@ fun MainScreenView(
                                                 file.name.endsWith(".jpg", ignoreCase = true) || file.name.endsWith(".jpeg", ignoreCase = true) -> "image/jpeg"
                                                 file.name.endsWith(".png", ignoreCase = true) -> "image/png"
                                                 file.name.endsWith(".webp", ignoreCase = true) -> "image/webp"
+                                                file.name.endsWith(".avif", ignoreCase = true) -> "image/avif"
+                                                file.name.endsWith(".heic", ignoreCase = true) || file.name.endsWith(".heif", ignoreCase = true) -> "image/heif"
+                                                file.name.endsWith(".jxl", ignoreCase = true) -> "image/jxl"
                                                 file.name.endsWith(".m4a", ignoreCase = true) || file.name.endsWith(".aac", ignoreCase = true) -> "audio/aac"
                                                 file.name.endsWith(".mp3", ignoreCase = true) -> "audio/mpeg"
                                                 else -> when (item.mediaType) {
