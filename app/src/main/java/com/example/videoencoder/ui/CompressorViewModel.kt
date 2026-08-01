@@ -581,9 +581,11 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    fun refreshEncodedHistory() {
+    fun refreshEncodedHistory(showPullToRefreshSpinner: Boolean = false) {
         viewModelScope.launch(Dispatchers.IO) {
-            _uiState.update { it.copy(isRefreshing = true) }
+            if (showPullToRefreshSpinner) {
+                _uiState.update { it.copy(isRefreshing = true) }
+            }
             try {
                 val context = getApplication<Application>().applicationContext
                 val directoriesToScan = mutableListOf<File>()
@@ -648,7 +650,9 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                 }
 
                 val sortedFiles = fileMap.values.sortedByDescending { it.lastModifiedMs }
-                kotlinx.coroutines.delay(1000)
+                if (showPullToRefreshSpinner) {
+                    kotlinx.coroutines.delay(800)
+                }
                 _uiState.update { current ->
                     val activeOrQueuedItems = current.encodedHistory.filter {
                         it.isEncodingActive || it.isQueued || it.queueStatus == QueueStatus.QUEUED || it.queueStatus == QueueStatus.ENCODING

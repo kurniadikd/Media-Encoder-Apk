@@ -748,7 +748,7 @@ fun MainScreenView(
                     },
                     actions = {
                         M3ExpressiveFilledTonalIconButton(
-                            onClick = { viewModel.refreshEncodedHistory() },
+                            onClick = { viewModel.refreshEncodedHistory(showPullToRefreshSpinner = true) },
                             shape = CircleShape
                         ) {
                             Icon(Icons.Default.Refresh, contentDescription = "Refresh Daftar File")
@@ -772,7 +772,7 @@ fun MainScreenView(
 
             PullToRefreshBox(
                 isRefreshing = uiState.isRefreshing,
-                onRefresh = { viewModel.refreshEncodedHistory() },
+                onRefresh = { viewModel.refreshEncodedHistory(showPullToRefreshSpinner = true) },
                 state = pullToRefreshState,
                 indicator = {}, // Disosongkan karena ditaruh pada Layer Teratas di luar Scaffold
                 modifier = Modifier
