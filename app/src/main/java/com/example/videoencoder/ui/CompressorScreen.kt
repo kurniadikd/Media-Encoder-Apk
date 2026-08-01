@@ -82,6 +82,7 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -90,6 +91,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardColors
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -1833,7 +1835,14 @@ fun UnifiedMediaCardItem(
     onShare: () -> Unit,
     onDelete: () -> Unit
 ) {
+    var menuExpanded by remember { mutableStateOf(false) }
+
     M3ExpressiveCard(
+        onClick = {
+            if (!item.isEncodingActive && !item.isQueued && item.queueStatus != QueueStatus.QUEUED) {
+                onPlay()
+            }
+        },
         modifier = modifier
             .fillMaxWidth()
             .animateContentSize(
@@ -1859,7 +1868,6 @@ fun UnifiedMediaCardItem(
                 modifier = Modifier.weight(1f)
             ) {
                 // 1. Left Badge Icon
-
                 AnimatedContent(
                     targetState = cardStateKey,
                     transitionSpec = { ExpressiveMotion.badgeTransitionSpec },
@@ -2058,7 +2066,7 @@ fun UnifiedMediaCardItem(
 
             Spacer(modifier = Modifier.width(8.dp))
 
-            // 3. Right Action Buttons
+            // 3. Single Action Button: Three Dots (MoreVert) with DropdownMenu
             AnimatedContent(
                 targetState = cardStateKey,
                 transitionSpec = { ExpressiveMotion.stateTransitionSpec },
@@ -2088,20 +2096,33 @@ fun UnifiedMediaCardItem(
                         }
                     }
                     else -> {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            if (item.queueStatus == QueueStatus.COMPLETED) {
-                                M3ExpressiveIconButton(onClick = onPlay) {
-                                    Icon(Icons.Default.PlayArrow, contentDescription = "Putar Media")
-                                }
-                                M3ExpressiveIconButton(onClick = onShare) {
-                                    Icon(Icons.Default.Share, contentDescription = "Bagikan Media")
-                                }
+                        Box {
+                            M3ExpressiveIconButton(onClick = { menuExpanded = true }) {
+                                Icon(Icons.Default.MoreVert, contentDescription = "Opsi Lainnya")
                             }
-                            M3ExpressiveIconButton(onClick = onDelete) {
-                                Icon(Icons.Default.Delete, contentDescription = "Hapus Media")
+
+                            DropdownMenu(
+                                expanded = menuExpanded,
+                                onDismissRequest = { menuExpanded = false }
+                            ) {
+                                if (item.queueStatus == QueueStatus.COMPLETED) {
+                                    DropdownMenuItem(
+                                        text = { Text("Bagikan") },
+                                        leadingIcon = { Icon(Icons.Default.Share, contentDescription = null) },
+                                        onClick = {
+                                            menuExpanded = false
+                                            onShare()
+                                        }
+                                    )
+                                }
+                                DropdownMenuItem(
+                                    text = { Text("Hapus") },
+                                    leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+                                    onClick = {
+                                        menuExpanded = false
+                                        onDelete()
+                                    }
+                                )
                             }
                         }
                     }
